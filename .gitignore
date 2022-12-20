@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+
+# C extensions
+*.so
+
+# Packages
+*.egg
+*.egg-info
+/dist
+/build
+/eggs
+/parts
+/bin
+/var
+/sdist
+/develop-eggs
+/.installed.cfg
+/lib
+/lib64
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.cache/
+.pytest_cache/
+.coverage
+.coverage.*
+.tox
+coverage.xml
+htmlcov/
+
+# Virtualenv
+# http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
+.Python
+[Bb]in
+[Ii]nclude
+[Ll]ib
+[Ll]ib64
+[Ll]ocal
+[Ss]cripts
+pyvenv.cfg
+venv
+pip-selfcheck.json
+
+# Pyenv
+.python-version
+
+# Django
+db.sqlite3
+
+# macOS
+.DS_Store
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
