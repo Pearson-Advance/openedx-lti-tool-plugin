@@ -4,24 +4,36 @@
 #
 #    pip-compile --output-file=requirements/test.txt requirements/test.in
 #
-asgiref==3.5.2
+asgiref==3.6.0
     # via
     #   -r requirements/base.txt
     #   django
 astroid==2.11.7
     # via pylint
-attrs==22.1.0
+attrs==22.2.0
     # via
     #   jsonschema
     #   pytest
 certifi==2022.12.7
-    # via requests
+    # via
+    #   -r requirements/base.txt
+    #   requests
+cffi==1.15.1
+    # via
+    #   -r requirements/base.txt
+    #   cryptography
 charset-normalizer==2.1.1
-    # via requests
-codecov==2.1.12
-    # via -r requirements/test.in
-coverage==6.5.0
-    # via codecov
+    # via
+    #   -r requirements/base.txt
+    #   requests
+cryptography==38.0.4
+    # via
+    #   -r requirements/base.txt
+    #   jwcrypto
+deprecated==1.2.13
+    # via
+    #   -r requirements/base.txt
+    #   jwcrypto
 dill==0.3.6
     # via pylint
 distlib==0.3.6
@@ -29,22 +41,30 @@ distlib==0.3.6
     # via
     #   -c requirements/constraints.txt
     #   -r requirements/base.txt
-exceptiongroup==1.0.4
+exceptiongroup==1.1.0
     # via pytest
 filelock==3.8.2
     # via
     #   tox
     #   virtualenv
 idna==3.4
-    # via requests
+    # via
+    #   -r requirements/base.txt
+    #   requests
+importlib-resources==5.10.1
+    # via jsonschema
 iniconfig==1.1.1
     # via pytest
-isort==5.11.2
+isort==5.11.4
     # via
     #   -r requirements/test.in
     #   pylint
 jsonschema==4.17.3
     # via -r requirements/test.in
+jwcrypto==1.4.2
+    # via
+    #   -r requirements/base.txt
+    #   pylti1p3
 lazy-object-proxy==1.8.0
     # via astroid
 mccabe==0.7.0
@@ -53,6 +73,8 @@ packaging==22.0
     # via
     #   pytest
     #   tox
+pkgutil-resolve-name==1.3.10
+    # via jsonschema
 platformdirs==2.6.0
     # via
     #   pylint
@@ -65,8 +87,16 @@ py==1.11.0
     # via tox
 pycodestyle==2.10.0
     # via -r requirements/test.in
+pycparser==2.21
+    # via
+    #   -r requirements/base.txt
+    #   cffi
 pydocstyle==6.1.1
     # via -r requirements/test.in
+pyjwt==2.6.0
+    # via
+    #   -r requirements/base.txt
+    #   pylti1p3
 pylint==2.14.5
     # via
     #   -c requirements/constraints.txt
@@ -77,18 +107,24 @@ pylint-django==2.5.3
     # via -r requirements/test.in
 pylint-plugin-utils==0.7
     # via pylint-django
+pylti1p3==1.10.0
+    # via
+    #   -c requirements/constraints.txt
+    #   -r requirements/base.txt
 pyrsistent==0.19.2
     # via jsonschema
 pytest==7.2.0
     # via pytest-django
 pytest-django==4.5.2
     # via -r requirements/test.in
-pytz==2022.6
+pytz==2022.7
     # via
     #   -r requirements/base.txt
     #   django
 requests==2.28.1
-    # via codecov
+    # via
+    #   -r requirements/base.txt
+    #   pylti1p3
 six==1.16.0
     # via tox
 snowballstemmer==2.2.0
@@ -104,7 +140,7 @@ tomli==2.0.1
     #   tox
 tomlkit==0.11.6
     # via pylint
-tox==3.27.1
+tox==3.28.0
     # via
     #   -c requirements/constraints.txt
     #   -r requirements/test.in
@@ -113,11 +149,18 @@ typing-extensions==4.4.0
     #   astroid
     #   pylint
 urllib3==1.26.13
-    # via requests
+    # via
+    #   -r requirements/base.txt
+    #   requests
 virtualenv==20.17.1
     # via tox
 wrapt==1.14.1
-    # via astroid
+    # via
+    #   -r requirements/base.txt
+    #   astroid
+    #   deprecated
+zipp==3.11.0
+    # via importlib-resources
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

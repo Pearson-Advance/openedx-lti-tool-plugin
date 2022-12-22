@@ -27,3 +27,5 @@ DATABASES = {
         'NAME': 'db.sqlite3',
     },
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -1,8 +1,10 @@
-"""
-URL configuration for `openedx_lti_tool_plugin`.
+"""URL configuration for `openedx_lti_tool_plugin`."""
+from django.urls import path
 
-For more information on this file, see:
-https://docs.djangoproject.com/en/3.2/topics/http/urls/
-"""
+from openedx_lti_tool_plugin import views
 
-urlpatterns = []
+urlpatterns = [
+    path('1.3/login/', views.LtiToolLoginView.as_view(), name='lti1p3-login'),
+    path('1.3/launch/', views.LtiToolLaunchView.as_view(), name='lti1p3-launch'),
+    path('1.3/pub/jwks/', views.LtiToolJwksView.as_view(), name='lti1p3-pub-jwks'),
+]
