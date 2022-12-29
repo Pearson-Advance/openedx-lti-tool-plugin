@@ -1,9 +1,4 @@
-"""
-App configuration for `openedx_lti_tool_plugin`.
-
-For more information on this file, see:
-https://docs.djangoproject.com/en/3.2/ref/applications
-"""
+"""App configuration for `openedx_lti_tool_plugin`."""
 from django.apps import AppConfig
 
 

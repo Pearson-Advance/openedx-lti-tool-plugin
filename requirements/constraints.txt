@@ -22,3 +22,6 @@ tox<4.0.0
 # pylint==2.15.0 includes changes that makes pylint-django to break:
 # https://github.com/PyCQA/pylint-django/issues/370
 pylint<2.15.0
+
+# use edx-platform version pylti1p3==1.10.0.
+pylti1p3<1.11.0

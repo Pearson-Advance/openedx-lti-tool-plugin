@@ -1,9 +1,4 @@
-"""
-Tests for the `openedx_lti_tool_plugin` apps module.
-
-For more information on this file, see:
-https://docs.python.org/3/library/unittest.html
-"""
+"""Tests for the `openedx_lti_tool_plugin` apps module."""
 from django.test import TestCase
 from jsonschema import validate
 
