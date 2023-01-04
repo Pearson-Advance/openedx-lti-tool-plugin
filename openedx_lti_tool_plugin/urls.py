@@ -1,4 +1,4 @@
-"""URL configuration for `openedx_lti_tool_plugin`."""
+"""URL configuration for openedx_lti_tool_plugin."""
 from django.urls import path
 
 from openedx_lti_tool_plugin import views

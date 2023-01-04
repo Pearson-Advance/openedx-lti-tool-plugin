@@ -6,6 +6,7 @@ https://docs.djangoproject.com/en/3.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
+from django.conf import LazySettings
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'secret-key'
@@ -28,10 +29,12 @@ TIME_ZONE = 'UTC'
 USE_TZ = True
 
 
-def plugin_settings(settings):  # pylint: disable=unused-argument
+def plugin_settings(settings: LazySettings):
     """
     Set of plugin settings used by the Open edX platform.
 
     For more information please see:
-    https://github.com/edx/edx-platform/blob/master/openedx/core/djangoapps/plugins/README.rst
+    https://github.com/openedx/edx-django-utils/tree/master/edx_django_utils/plugins
     """
+    settings.OLTTP_ENABLE_LTI_TOOL = False
+    settings.AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')
