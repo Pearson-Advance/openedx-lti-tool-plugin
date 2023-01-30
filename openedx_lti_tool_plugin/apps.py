@@ -1,4 +1,4 @@
-"""App configuration for `openedx_lti_tool_plugin`."""
+"""App configuration for openedx_lti_tool_plugin."""
 from django.apps import AppConfig
 
 
@@ -6,7 +6,7 @@ class OpenEdxLtiToolPluginConfig(AppConfig):
     """Configuration for the openedx_lti_tool_plugin Django application."""
 
     name = 'openedx_lti_tool_plugin'
-    verbose_name = "Open edX LTI Tool Plugin"
+    verbose_name = 'Open edX LTI Tool Plugin'
     plugin_app = {
         'url_config': {
             'lms.djangoapp': {

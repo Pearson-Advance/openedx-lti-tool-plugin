@@ -13,3 +13,5 @@ isort                     # to standardize order of imports
 tox                       # Virtualenv management for tests
 pytest-django             # pytest extension for better Django support
 jsonschema                # JSON Schema data validation
+ddt                       # Run tests with multiple different data
+testfixtures              # Helpers and mock objects

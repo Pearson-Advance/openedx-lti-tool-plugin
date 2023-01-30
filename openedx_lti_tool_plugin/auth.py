@@ -1,7 +1,13 @@
-"""Authentication for `openedx_lti_tool_plugin`."""
-from django.contrib.auth.backends import ModelBackend
+"""Authentication for openedx_lti_tool_plugin."""
+import logging
+from typing import Optional
 
-from .models import LtiProfile  # pylint: disable=unused-import
+from django.contrib.auth.backends import ModelBackend
+from django.http.request import HttpRequest
+
+from openedx_lti_tool_plugin.models import LtiProfile, UserT
+
+log = logging.getLogger(__name__)
 
 
 class LtiAuthenticationBackend(ModelBackend):
@@ -12,13 +18,33 @@ class LtiAuthenticationBackend(ModelBackend):
     Returns None if no user profile is found.
     """
 
-    # pylint: disable=arguments-renamed
-    def authenticate(self, request, iss=None, aud=None, sub=None, **kwargs):
+    # pylint: disable=arguments-renamed,arguments-differ
+    def authenticate(
+        self,
+        request: HttpRequest,
+        iss: Optional[str] = None,
+        aud: Optional[str] = None,
+        sub: Optional[str] = None,
+    ) -> Optional[UserT]:
         """Authenticate using LTI launch claims corresponding to a LTIProfile instance.
 
         Args:
-            request: HTTP request object
-            iss (str, optional): LTI issuer claim. Defaults to None.
-            aud (str, optional): LTI audience claim. Defaults to None.
-            sub (str, optional): LTI subject claim. Defaults to None.
+            request: HTTP request object.
+            iss: LTI issuer claim.
+            aud: LTI audience claim.
+            sub: LTI subject claim.
+
+        Returns:
+            LTI profile user instance or None.
         """
+        log.debug('LTI 1.3 authentication: iss=%s, sub=%s, aud=%s', iss, sub, aud)
+
+        try:
+            profile = LtiProfile.objects.get_from_claims(iss=iss, aud=aud, sub=sub)
+        except LtiProfile.DoesNotExist:
+            return None
+
+        user = profile.user
+        log.debug('LTI 1.3 authentication profile: profile=%s user=%s', profile, user)
+
+        return user if self.user_can_authenticate(user) else None

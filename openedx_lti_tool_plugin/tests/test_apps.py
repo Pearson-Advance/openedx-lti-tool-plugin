@@ -1,4 +1,4 @@
-"""Tests for the `openedx_lti_tool_plugin` apps module."""
+"""Tests for the openedx_lti_tool_plugin apps module."""
 from django.test import TestCase
 from jsonschema import validate
 
@@ -18,38 +18,38 @@ class TestOpenEdxLtiToolPluginConfig(TestCase):
         https://python-jsonschema.readthedocs.io/en/stable/
         """
         url_config_properties = {
-            "type": "object",
-            "required": ["regex", "namespace", "relative_path"],
-            "properties": {
-                "regex": {"type": "string"},
-                "namespace": {"type": "string"},
-                "relative_path": {"type": "string"},
+            'type': 'object',
+            'required': ['regex', 'namespace', 'relative_path'],
+            'properties': {
+                'regex': {'type': 'string'},
+                'namespace': {'type': 'string'},
+                'relative_path': {'type': 'string'},
             },
         }
         settings_config_properties = {
-            "type": "object",
-            "required": ["common", "production", "test"],
-            "patternProperties": {
-                "^.*$": {
-                    "type": "object",
-                    "required": ["relative_path"],
-                    "properties": {"relative_path": {"type": "string"}},
+            'type': 'object',
+            'required': ['common', 'production', 'test'],
+            'patternProperties': {
+                '^.*$': {
+                    'type': 'object',
+                    'required': ['relative_path'],
+                    'properties': {'relative_path': {'type': 'string'}},
                 },
             },
         }
         schema = {
-            "type": "object",
-            "required": ["url_config", "settings_config"],
-            "properties": {
-                "url_config": {
-                    "type": "object",
-                    "required": ["lms.djangoapp"],
-                    "patternProperties": {"^.*$": url_config_properties},
+            'type': 'object',
+            'required': ['url_config', 'settings_config'],
+            'properties': {
+                'url_config': {
+                    'type': 'object',
+                    'required': ['lms.djangoapp'],
+                    'patternProperties': {'^.*$': url_config_properties},
                 },
-                "settings_config": {
-                    "type": "object",
-                    "required": ["lms.djangoapp"],
-                    "patternProperties": {"^.*$": settings_config_properties},
+                'settings_config': {
+                    'type': 'object',
+                    'required': ['lms.djangoapp'],
+                    'patternProperties': {'^.*$': settings_config_properties},
                 },
             },
         }
