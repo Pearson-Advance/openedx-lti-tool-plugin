@@ -259,8 +259,7 @@ Workflow
 1. A new view will receive the IDs of the requested content.
 2. We will validate that the requested IDs are valid and that the user on the request
    have an LTIPRofile instance.
-3. If the user has no permission, then the view returns nothing, if the user
-   is not enrolled in the course, also no content should be rendered.
+3. If the user has no permission, then the view returns nothing.
 4. If the user has permission to load the view, we will call the render_xblock view
    to render the requested XBlock to the user alongside a navigation menu with
    the course outline. (This could be done by either injecting the XBlock using
