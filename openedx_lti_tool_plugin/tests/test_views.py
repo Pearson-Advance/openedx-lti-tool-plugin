@@ -5,14 +5,20 @@ from django.http.response import Http404
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from opaque_keys import InvalidKeyError
-from opaque_keys.edx.keys import CourseKey, UsageKey
+from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 from testfixtures import log_capture
 from testfixtures.logcapture import LogCaptureForDecorator
 
-from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
-from openedx_lti_tool_plugin.views import LtiToolJwksView, LtiToolLaunchView, LtiToolLoginView
+from openedx_lti_tool_plugin.tests import AUD, COURSE_ID, ISS, SUB, USAGE_KEY
+from openedx_lti_tool_plugin.views import (
+    LtiCoursewareView,
+    LtiToolJwksView,
+    LtiToolLaunchView,
+    LtiToolLoginView,
+    LtiXBlockView,
+)
 
 BASE_LAUNCH_DATA = {'iss': ISS, 'aud': [AUD], 'sub': SUB}
 
@@ -130,7 +136,7 @@ class TestLtiToolLoginView(FactoryMixin, TestCase):
         self.assertEqual(response.content.decode('utf-8'), 'Invalid LTI 1.3 login request.')
         self.assertEqual(response.status_code, 400)
 
-    @override_settings(OLTTP_ENABLE_LTI_TOOL=False)
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):
         """Test raise 404 response when plugin is disabled."""
         with self.assertRaises(Http404):
@@ -143,13 +149,12 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        self.url = reverse('lti1p3-launch')
+        self.url = reverse('lti1p3-launch', args=[COURSE_ID])
         self.view_class = LtiToolLaunchView
         self.user = MagicMock(username='x', email='x@example.com', is_authenticated=True)
 
     @patch.object(LtiToolLaunchView, '_authenticate_and_login', return_value=True)
     @patch.object(CourseKey, 'from_string', return_value=None)
-    @patch.object(UsageKey, 'from_string')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
@@ -160,7 +165,6 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
         get_launch_data_mock: MagicMock,
-        usage_key_mock: MagicMock,
         course_key_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
     ):
@@ -171,23 +175,19 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            usage_key_mock: Mocked UsageKey from_string method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocker LtiToolLaunchView _authenticate_and_login method.
         """
-        usage_key_mock.map_into_course().return_value = None
         request = self.factory.post(self.url)
         request.user = self.user
-        response = self.view_class.as_view()(request)
+        response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(
             request,
             tool_conf_mock(),
             launch_data_storage=tool_storage_mock(),
         )
-        course_key_mock.assert_called_once_with(None)
-        usage_key_mock.assert_called_once_with(None)
-        usage_key_mock.map_into_course.assert_called_once_with()
+        course_key_mock.assert_called_once_with(COURSE_ID)
         get_launch_data_mock.assert_called_once_with()
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         self.assertEqual(response.status_code, 200)
@@ -198,7 +198,6 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
                 'email': request.user.email,
                 'is_authenticated': request.user.is_authenticated,
                 'launch_data': BASE_LAUNCH_DATA,
-                'usage_key': str(usage_key_mock().map_into_course()),
             },
         )
 
@@ -231,7 +230,7 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         """
         request = self.factory.post(self.url)
         request.user = self.user
-        response = self.view_class.as_view()(request)
+        response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(
             request,
@@ -251,7 +250,7 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
     @log_capture()
-    @patch.object(UsageKey, 'from_string', side_effect=InvalidKeyError(None, None))
+    @patch.object(CourseKey, 'from_string', side_effect=InvalidKeyError(None, None))
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
@@ -262,22 +261,22 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
         get_launch_data_mock: MagicMock,
-        usage_key_mock: MagicMock,
+        course_key_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
-        """Test POST request raises InvalidKeyError on invalid or missing usage_key.
+        """Test POST request raises InvalidKeyError on invalid course_id.
 
         Args:
             message_launch_mock: Mocked DjangoMessageLaunch class.
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            usage_key_mock: Mocked UsageKey from_string method.
+            course_key_mock: Mocked CourseKey from_string method.
             log: LogCapture fixture.
         """
         request = self.factory.post(self.url)
         request.user = self.user
-        response = self.view_class.as_view()(request)
+        response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(
             request,
@@ -285,13 +284,13 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
             launch_data_storage=tool_storage_mock(),
         )
         get_launch_data_mock.assert_called_once_with()
-        usage_key_mock.assert_called_once_with(None)
-        self.assertRaises(InvalidKeyError, usage_key_mock)
+        course_key_mock.assert_called_once_with(COURSE_ID)
+        self.assertRaises(InvalidKeyError, course_key_mock)
         log.check(
             (
                 'openedx_lti_tool_plugin.views',
                 'ERROR',
-                f'LTI 1.3: Course and usage keys parse failed: {None}: {None}',
+                f'LTI 1.3: Course ID parse failed: {None}: {None}',
             ),
         )
         self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
@@ -300,7 +299,6 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
     @log_capture()
     @patch.object(LtiToolLaunchView, '_authenticate_and_login', return_value=False)
     @patch.object(CourseKey, 'from_string', return_value=None)
-    @patch.object(UsageKey, 'from_string')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
@@ -311,7 +309,6 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
         get_launch_data_mock: MagicMock,
-        usage_key_mock: MagicMock,
         course_key_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
         log: LogCaptureForDecorator,
@@ -323,24 +320,20 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            usage_key_mock: Mocked UsageKey from_string method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocker LtiToolLaunchView _authenticate_and_login method.
             log: LogCapture fixture.
         """
-        usage_key_mock.map_into_course().return_value = None
         request = self.factory.post(self.url)
         request.user = self.user
-        response = self.view_class.as_view()(request)
+        response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(
             request,
             tool_conf_mock(),
             launch_data_storage=tool_storage_mock(),
         )
-        course_key_mock.assert_called_once_with(None)
-        usage_key_mock.assert_called_once_with(None)
-        usage_key_mock.map_into_course.assert_called_once_with()
+        course_key_mock.assert_called_once_with(COURSE_ID)
         get_launch_data_mock.assert_called_once_with()
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         log.check(
@@ -353,7 +346,7 @@ class TestLtiToolLaunchView(FactoryMixin, TestCase):
         self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
         self.assertEqual(response.status_code, 400)
 
-    @override_settings(OLTTP_ENABLE_LTI_TOOL=False)
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):
         """Test raise 404 response when plugin is disabled."""
         with self.assertRaises(Http404):
@@ -383,7 +376,75 @@ class TestLtiToolJwksView(FactoryMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertJSONEqual(response.content, get_jwks_mock())
 
-    @override_settings(OLTTP_ENABLE_LTI_TOOL=False)
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_with_lti_disabled(self):
+        """Test raise 404 response when plugin is disabled."""
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.factory.get(self.url))
+
+
+class TestLtiXBlockView(FactoryMixin, TestCase):
+    """Test LTI XBlock view."""
+
+    def setUp(self):
+        """Test fixtures setup."""
+        super().setUp()
+        self.url = reverse('lti-xblock', args=[USAGE_KEY])
+        self.view_class = LtiXBlockView
+
+    @patch('openedx_lti_tool_plugin.views.render_xblock')
+    def test_get_with_usage_key_string(self, render_xblock_mock: MagicMock):
+        """Test GET request with usage key string.
+
+        Args:
+            render_xblock_mock: Mocked render_xblock function.
+        """
+        request = self.factory.get(self.url)
+        self.view_class.as_view()(request, USAGE_KEY)
+
+        self.assertEqual(request.META['HTTP_REFERER'], '')
+        render_xblock_mock.assert_called_once_with(request, USAGE_KEY, check_if_enrolled=False)
+
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_with_lti_disabled(self):
+        """Test raise 404 response when plugin is disabled."""
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.factory.get(self.url))
+
+
+class TestLtiCoursewareView(FactoryMixin, TestCase):
+    """Test LTI courseware view."""
+
+    def setUp(self):
+        """Test fixtures setup."""
+        super().setUp()
+        self.url = reverse('lti-courseware', args=[USAGE_KEY])
+        self.view_class = LtiCoursewareView
+
+    @patch('openedx_lti_tool_plugin.views.reverse')
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.render_to_response')
+    def test_with_course_sequence_unit_ids(
+        self,
+        render_to_response_mock: MagicMock,
+        reverse_mock: MagicMock,
+    ):
+        """Test GET request with course id, sequence id and unit id.
+
+        Args:
+            render_to_response_mock: Mocked render_to_response function.
+            reverse_mock: Mocked reverse function.
+        """
+        request = self.factory.get(self.url)
+        self.view_class.as_view()(request, USAGE_KEY)
+
+        render_to_response_mock.assert_called_once_with(
+            {
+                'lms_root_url': '',
+                'xblock_url': reverse_mock('lti-xblock', args=[USAGE_KEY]),
+            },
+        )
+
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):
         """Test raise 404 response when plugin is disabled."""
         with self.assertRaises(Http404):

@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 
 from .common import *  # pylint: disable=unused-wildcard-import,wildcard-import
 
+# Django settings
 DEBUG = True
 
 INSTALLED_APPS = [
@@ -54,4 +55,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTHENTICATION_BACKENDS = ['openedx_lti_tool_plugin.auth.LtiAuthenticationBackend']
 
-OLTTP_ENABLE_LTI_TOOL = True
+
+# Plugin settings
+OLTITP_ENABLE_LTI_TOOL = True
+
+COURSE_ID_PATTERN = '(?P<course_id>.*)'
+
+USAGE_KEY_PATTERN = '(?P<usage_key_string>.*)'
+
+# Backends for tests
+OLTITP_COURSEWARE_BACKEND = 'openedx_lti_tool_plugin.tests.backends_for_tests'

@@ -10,8 +10,8 @@ class OpenEdxLtiToolPluginConfig(AppConfig):
     plugin_app = {
         'url_config': {
             'lms.djangoapp': {
-                'namespace': 'openedx_lti_tool_plugin',
-                'regex': '^openedx_lti_tool_plugin/',
+                'namespace': name,
+                'regex': f'^{name}/',
                 'relative_path': 'urls',
             },
         },
