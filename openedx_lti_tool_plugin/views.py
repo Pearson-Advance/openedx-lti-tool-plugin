@@ -4,18 +4,21 @@ from typing import Any, Callable, Optional, TypeVar, Union
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login
-from django.http import Http404, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.http.request import HttpRequest
+from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic.base import View
+from django.views.generic.base import TemplateResponseMixin, View
 from opaque_keys import InvalidKeyError
-from opaque_keys.edx.keys import CourseKey, UsageKey
+from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
+from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
+from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblock
 from openedx_lti_tool_plugin.models import LtiProfile, UserT
 
 log = logging.getLogger(__name__)
@@ -36,7 +39,7 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
         Http404: LTI tool plugin is not enabled.
     """
     def wrapped_view(*args, **kwargs):
-        if not getattr(settings, 'OLTTP_ENABLE_LTI_TOOL', False):
+        if not getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False):
             raise Http404()
 
         return view_func(*args, **kwargs)
@@ -45,7 +48,11 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
 
 
 @method_decorator(requires_lti_enabled, name='dispatch')
-class LtiToolBaseView(View):
+class LtiBaseView(View):
+    """Base LTI view initializing common attributes."""
+
+
+class LtiToolBaseView(LtiBaseView):
     """Base LTI view initializing common LTI tool attributes."""
 
     # pylint: disable=attribute-defined-outside-init
@@ -139,13 +146,18 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         return edx_user
 
-    def post(self, request: HttpRequest) -> Union[JsonResponse, HttpResponseBadRequest]:
+    def post(
+        self,
+        request: HttpRequest,
+        course_id: str,
+    ) -> Union[JsonResponse, HttpResponseBadRequest]:
         """Process LTI 1.3 platform launch requests.
 
         Returns a LTI launch of a requested XBlock.
 
         Args:
             request: HTTP request object.
+            course_id: Course ID string.
 
         Returns:
             HTTP response with LTI launch content or bad request error.
@@ -155,14 +167,12 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         try:
             launch_data = launch_message.get_launch_data()
-            usage_key = UsageKey.from_string(request.GET.get('usage_id')).map_into_course(
-                CourseKey.from_string(request.GET.get('course_id')),
-            )
+            course_key = CourseKey.from_string(course_id)  # pylint: disable=unused-variable
         except LtiException as exc:
             log.error('LTI 1.3: Launch message validation failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
         except InvalidKeyError as exc:
-            log.error('LTI 1.3: Course and usage keys parse failed: %s', exc)
+            log.error('LTI 1.3: Course ID parse failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Authenticate and login LTI profile user.
@@ -175,13 +185,12 @@ class LtiToolLaunchView(LtiToolBaseView):
             log.error('LTI 1.3: Profile authentication failed.')
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        # TODO: Display user information, we should replace this with render_xblock.
+        # TODO: Replace this with course home redirect.
         return JsonResponse({
             'username': request.user.username,
             'email': request.user.email,
             'is_authenticated': request.user.is_authenticated,
             'launch_data': launch_data,
-            'usage_key': str(usage_key),
         })
 
 
@@ -197,6 +206,65 @@ class LtiToolJwksView(LtiToolBaseView):
             request: HTTP request object.
 
         Returns:
-            HTTP response with publick JWKS.
+            HTTP response with public JWKS.
         """
         return JsonResponse(self.tool_config.get_jwks())
+
+
+class LtiXBlockView(LtiBaseView):
+    """LTI XBlock view."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        usage_key_string: str,
+    ) -> HttpResponse:
+        """Render XBlock view.
+
+        Returns an XBlock using render_xblock view.
+
+        Args:
+            request: HTTP request object.
+            usage_key_string: Usage key string.
+
+        Returns:
+            HTTP response with rendered LTI courseware view.
+        """
+        # render_xblock calls is_learning_mfe to evaluate if the request
+        # is sent by the learning MFE by evaluating the HTTP Referer header,
+        # this enables some optimizations to make the view work properly
+        # on an iframe, for now, we will modify the request meta to pretend
+        # its from the learning MFE URL until render_xblock is improved
+        # to enable this optimizations from other addresses.
+        request.META['HTTP_REFERER'] = getattr(settings, 'LEARNING_MICROFRONTEND_URL', '')
+
+        return render_xblock(request, usage_key_string, check_if_enrolled=False)
+
+
+class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
+    """LTI courseware view."""
+
+    template_name = 'openedx_lti_tool_plugin/courseware.html'
+
+    def get(
+        self,
+        request: HttpRequest,
+        unit_key: str,
+    ) -> HttpResponse:
+        """Render custom LTI courseware view.
+
+        Returns a courseware view for LTI launches.
+
+        Args:
+            request: HTTP request object.
+            unit_key: Unit key string.
+
+        Returns:
+            HTTP response with rendered LTI courseware view.
+        """
+        return self.render_to_response(
+            {
+                'lms_root_url': getattr(settings, 'LMS_ROOT_URL', ''),
+                'xblock_url': reverse(f'{AppConfig.name}:lti-xblock', args=[unit_key]),
+            },
+        )

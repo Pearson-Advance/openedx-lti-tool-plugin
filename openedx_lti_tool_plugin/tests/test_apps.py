@@ -2,13 +2,11 @@
 from django.test import TestCase
 from jsonschema import validate
 
-from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig
+from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
 
 
 class TestOpenEdxLtiToolPluginConfig(TestCase):
     """Test openedx_lti_tool_plugin app config."""
-
-    config = OpenEdxLtiToolPluginConfig
 
     def test_plugin_app_schema(self):
         """
@@ -54,4 +52,6 @@ class TestOpenEdxLtiToolPluginConfig(TestCase):
             },
         }
 
-        validate(instance=self.config.plugin_app, schema=schema)
+        validate(instance=AppConfig.plugin_app, schema=schema)
+        self.assertEqual(AppConfig.name, 'openedx_lti_tool_plugin')
+        self.assertEqual(AppConfig.verbose_name, 'Open edX LTI Tool Plugin')
