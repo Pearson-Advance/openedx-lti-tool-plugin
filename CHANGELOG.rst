@@ -16,6 +16,33 @@ Unreleased
 
 *
 
+0.0.2 - 2023-03-06
+********************
+
+Changed
+=======
+
+- Improve app plugin_app config.
+- Improve OpenEdxLtiToolPluginConfig tests.
+- Improve LTI 1.3 URLs.
+- Update urls tests.
+- Modify LtiToolLaunchView post method params.
+- Remove usage_key from LtiToolLaunchView.
+- Update LtiToolLaunchView tests.
+- Update OLTTP_ENABLE_LTI_TOOL setting to OLTITP_ENABLE_LTI_TOOL.
+
+Added
+=====
+
+- LtiBaseView class.
+- courseware.html template
+- LTI XBlock and Courseware urlpatterns.
+- edxapp_wrapper module.
+- courseware module wrapper backend.
+- OLTITP_COURSEWARE_BACKEND setting.
+- required edx-platform test settings.
+- LtiXBlockView and LtiCoursewareView tests
+
 0.0.1 - 2023-01-31
 ********************
 
@@ -36,7 +63,8 @@ Added
 - Required test dependencies.
 - Upgrade dependencies.
 - Required common and test settings.
-- Supress pytest Django 4.0/4.1 deprecation warnings
+- Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.1...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.2
 [0.0.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.1
