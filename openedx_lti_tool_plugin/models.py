@@ -6,10 +6,11 @@ from typing import Tuple, TypeVar
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
-from django.db import models
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
+from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 
@@ -105,14 +106,20 @@ class LtiProfile(models.Model):
         if getattr(self, 'user', None):
             return super().save(*args, **kwargs)
 
-        self.user = get_user_model().objects.create(
-            username=f'{app_config.name}.{self.uuid}',
-            email=f'{self.uuid}@{app_config.name}',
-        )
-        self.user.set_unusable_password()  # LTI users can only auth throught LTI launches.
-        self.user.save()
+        with transaction.atomic():
+            # Create edx user.
+            self.user = get_user_model().objects.create(
+                username=f'{app_config.name}.{self.uuid}',
+                email=f'{self.uuid}@{app_config.name}',
+            )
+            self.user.set_unusable_password()  # LTI users can only auth throught LTI launches.
+            self.user.save()
 
-        return super().save(*args, **kwargs)
+            # Create edx user profile.
+            profile = user_profile()(user=self.user)
+            profile.save()
+
+            return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         """Get a string representation of this model instance."""

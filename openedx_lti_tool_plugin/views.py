@@ -4,22 +4,34 @@ from typing import Any, Callable, Optional, TypeVar, Union
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.http.request import HttpRequest
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateResponseMixin, View
-from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
 from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblock
+from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
+from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_user_change_as_expected
+from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
 from openedx_lti_tool_plugin.models import LtiProfile, UserT
+from openedx_lti_tool_plugin.utils import get_course_outline
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +62,38 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
 @method_decorator(requires_lti_enabled, name='dispatch')
 class LtiBaseView(View):
     """Base LTI view initializing common attributes."""
+
+    def is_user_enrolled(self, edx_user: UserT, course_id: str):
+        """
+        Check user is enrolled to course.
+
+        Args:
+            edx_user:  Open edX user instance.
+            course_id: course_id: Course ID string.
+
+        Returns:
+            Course enrollment or None.
+        """
+        return course_enrollment().get_enrollment(edx_user, CourseKey.from_string(course_id))
+
+    def get_course_outline(self, request: HttpRequest, course_id: str) -> Union[dict, HttpResponseBadRequest]:
+        """Get course outline for user.
+
+        Args:
+            request: HTTP request object.
+            course_id: Course ID string.
+
+        Returns:
+            Course outline dictionary.
+
+        Raises:
+            Http404: Course is not found.
+        """
+        try:
+            return get_course_outline(request, course_id)
+        # Course is not found.
+        except item_not_found_error() as exc:
+            raise Http404 from exc
 
 
 class LtiToolBaseView(LtiBaseView):
@@ -118,7 +162,7 @@ class LtiToolLaunchView(LtiToolBaseView):
 
     BAD_RESPONSE_MESSAGE = _('Invalid LTI 1.3 launch.')
 
-    def _authenticate_and_login(
+    def authenticate_and_login(
         self,
         request: HttpRequest,
         iss: str,
@@ -143,8 +187,30 @@ class LtiToolLaunchView(LtiToolBaseView):
             return None
 
         login(request, edx_user)  # Login edx platform user.
+        mark_user_change_as_expected(edx_user.id)  # Mark user change as safe.
 
         return edx_user
+
+    def enroll(
+        self,
+        request: HttpRequest,
+        edx_user: UserT,
+        course_key: str,
+    ) -> Optional[HttpResponseBadRequest]:
+        """Enroll the LTI profile user to course for the LTI launch.
+
+        Args:
+            request: HTTP request object.
+            edx_user:  Open edX user instance.
+            course_key: Course key string.
+        """
+        if not course_enrollment().get_enrollment(edx_user, course_key):
+            course_enrollment().enroll(
+                user=edx_user,
+                course_key=course_key,
+                check_access=True,
+                request=request,
+            )
 
     def post(
         self,
@@ -167,31 +233,31 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         try:
             launch_data = launch_message.get_launch_data()
-            course_key = CourseKey.from_string(course_id)  # pylint: disable=unused-variable
         except LtiException as exc:
             log.error('LTI 1.3: Launch message validation failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
-        except InvalidKeyError as exc:
-            log.error('LTI 1.3: Course ID parse failed: %s', exc)
-            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Authenticate and login LTI profile user.
-        if not self._authenticate_and_login(
+        edx_user = self.authenticate_and_login(
             request,
             launch_data.get('iss'),
             launch_data.get('aud'),
             launch_data.get('sub'),
-        ):
+        )
+
+        if not edx_user:
             log.error('LTI 1.3: Profile authentication failed.')
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        # TODO: Replace this with course home redirect.
-        return JsonResponse({
-            'username': request.user.username,
-            'email': request.user.email,
-            'is_authenticated': request.user.is_authenticated,
-            'launch_data': launch_data,
-        })
+        # Enroll LTI profile user to course.
+        try:
+            self.enroll(request, edx_user, CourseKey.from_string(course_id))
+        except course_enrollment_exception() as exc:
+            log.error('LTI 1.3: Course enrollment failed: %s', exc)
+            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+        # Redirect launch to course home.
+        return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
 
 
 class LtiToolJwksView(LtiToolBaseView):
@@ -238,9 +304,10 @@ class LtiXBlockView(LtiBaseView):
         # to enable this optimizations from other addresses.
         request.META['HTTP_REFERER'] = getattr(settings, 'LEARNING_MICROFRONTEND_URL', '')
 
-        return render_xblock(request, usage_key_string, check_if_enrolled=False)
+        return render_xblock(request, usage_key_string, check_if_enrolled=True)
 
 
+@method_decorator(xframe_options_exempt, name='dispatch')
 class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
     """LTI courseware view."""
 
@@ -264,7 +331,34 @@ class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
         """
         return self.render_to_response(
             {
-                'lms_root_url': getattr(settings, 'LMS_ROOT_URL', ''),
                 'xblock_url': reverse(f'{AppConfig.name}:lti-xblock', args=[unit_key]),
             },
         )
+
+
+@method_decorator([xframe_options_exempt, login_required], name='dispatch')
+class LtiCourseHomeView(TemplateResponseMixin, LtiBaseView):
+    """LTI couse home view."""
+
+    template_name = 'openedx_lti_tool_plugin/course_home.html'
+
+    def get(self, request: HttpRequest, course_id: str) -> Union[HttpResponse, HttpResponseBadRequest]:
+        """Render LTI course home view.
+
+        Returns a course home view for LTI launches.
+
+        Args:
+            request: HTTP request object.
+            course_id: Course ID string.
+
+        Returns:
+            HTTP response with rendered LTI course home view or bad request error.
+
+        Raises:
+            Http404: Course is not found or user is not enrolled.
+        """
+        # Check user course enrollment.
+        if not self.is_user_enrolled(request.user, course_id):
+            return HttpResponseForbidden(_(f'{request.user} is not enrolled to {course_id}'))
+
+        return self.render_to_response({'course_outline': self.get_course_outline(request, course_id)})

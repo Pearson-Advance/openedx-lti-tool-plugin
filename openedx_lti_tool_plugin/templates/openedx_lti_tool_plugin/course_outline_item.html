@@ -1,0 +1,19 @@
+<a
+  id='{{ block.id|urlencode }}'
+  class='{{ block.type }}-item list-group-item list-group-item-action'
+  {% if block.type == 'vertical' %}
+  href={% url request.resolver_match.app_name|add:':lti-xblock' block.id %}
+  {% else %}
+  href="#{{ block.id|urlencode }}-collapse"
+  {% endif %}
+  {% if block.type != 'vertical' %}
+  data-bs-toggle='collapse'
+  aria-controls='{{ block.id|urlencode }}-collapse'
+  aria-expanded='false'
+  {% endif %}>
+  <i
+  class='fa fa-{% if block.type == 'vertical' %}circle{% else %}folder{% endif %}-o'
+  aria-hidden='true'>
+  </i>
+  {{ block.display_name }}
+</a>

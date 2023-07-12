@@ -15,13 +15,18 @@ urlpatterns = [
         ),
     ])),
     re_path(
-        fr'^xblock/{settings.USAGE_KEY_PATTERN}$',
-        views.LtiXBlockView.as_view(),
-        name='lti-xblock',
+        fr'^course/{settings.COURSE_ID_PATTERN}/home$',
+        views.LtiCourseHomeView.as_view(),
+        name='lti-course-home',
     ),
     re_path(
         r'^course/(?P<unit_key>[^/]*)$',
         views.LtiCoursewareView.as_view(),
         name='lti-courseware',
+    ),
+    re_path(
+        fr'^xblock/{settings.USAGE_KEY_PATTERN}$',
+        views.LtiXBlockView.as_view(),
+        name='lti-xblock',
     ),
 ]
