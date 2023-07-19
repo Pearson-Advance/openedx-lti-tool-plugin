@@ -6,7 +6,9 @@
 <div class='container-fluid container-lg my-4 my-xl-5'>
   <div class='row'>
     <div class='col-xl-9 col-12'>
-    {% include 'openedx_lti_tool_plugin/course_outline.html' %}
+      <div id='course_title' class='h2'>{{ course_outline.display_name }}</div>
+      <hr>
+      {% include 'openedx_lti_tool_plugin/course_outline.html' %}
     </div>
   </div>
 </div>

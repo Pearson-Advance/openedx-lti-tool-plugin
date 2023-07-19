@@ -1,14 +1,17 @@
-<div id='course_title' class='h2'>{{ course_outline.display_name }}</div>
-<hr>
 <div id='outline' class='list-group'>
 {% for chapter in course_outline.children %}
   {% include 'openedx_lti_tool_plugin/course_outline_item.html' with block=chapter %}
-  <div id='{{ chapter.id|urlencode }}-collapse' class='list-group collapse show'>
+  <div id='{{ chapter.id|urlencode }}-collapse' class='list-group chapter-collapse collapse show'>
   {% for sequence in chapter.children %}
     {% include 'openedx_lti_tool_plugin/course_outline_item.html' with block=sequence %}
-    <div id='{{ sequence.id|urlencode }}-collapse' class='list-group collapse'>
+    <div id='{{ sequence.id|urlencode }}-collapse' class='list-group sequence-collapse collapse'>
     {% for unit in sequence.children %}
-      {% include 'openedx_lti_tool_plugin/course_outline_item.html' with block=unit %}
+      {% if unit.id == unit_obj.id %}
+        {% include 'openedx_lti_tool_plugin/course_outline_item.html' with block=unit is_active=True %}
+        <script>document.getElementById('{{sequence.id|urlencode}}-collapse').classList.add('show');</script>
+      {% else %}
+        {% include 'openedx_lti_tool_plugin/course_outline_item.html' with block=unit %}
+      {% endif %}
     {% endfor %}
     </div>
   {% endfor %}

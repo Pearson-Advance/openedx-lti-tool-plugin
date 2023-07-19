@@ -47,7 +47,7 @@ class TestUrls(TestCase):
     def test_lti_courseware_url_resolves(self):
         """Test LtiCoursewareView URL can be resolved."""
         self.assertEqual(
-            resolve(reverse('lti-courseware', args=[USAGE_KEY])).func.view_class,
+            resolve(reverse('lti-courseware', args=[COURSE_ID, USAGE_KEY])).func.view_class,
             LtiCoursewareView,
         )
 
