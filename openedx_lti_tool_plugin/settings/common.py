@@ -40,4 +40,10 @@ def plugin_settings(settings: LazySettings):
     settings.AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')
 
     # Backends settings
-    settings.OLTITP_COURSEWARE_BACKEND = 'openedx_lti_tool_plugin.edxapp_wrapper.backends.courseware_module_o_v1'
+    backends_module_path = 'openedx_lti_tool_plugin.edxapp_wrapper.backends'
+    settings.OLTITP_COURSE_EXPERIENCES_BACKEND = f'{backends_module_path}.course_experience_module_o_v1'
+    settings.OLTITP_COURSEWARE_BACKEND = f'{backends_module_path}.courseware_module_o_v1'
+    settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{backends_module_path}.learning_sequences_module_o_v1'
+    settings.OLTITP_MODULESTORE_BACKEND = f'{backends_module_path}.modulestore_module_o_v1'
+    settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{backends_module_path}.safe_sessions_module_o_v1'
+    settings.OLTITP_STUDENT_BACKEND = f'{backends_module_path}.student_module_o_v1'

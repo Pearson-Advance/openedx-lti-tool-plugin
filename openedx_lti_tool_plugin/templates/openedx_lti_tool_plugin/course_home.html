@@ -1,0 +1,13 @@
+{% extends 'openedx_lti_tool_plugin/base.html' %}
+{% load i18n %}
+
+{% block title %}{{ course_outline.display_name }} | {% translate 'LTI Course' %}{% endblock %}
+{% block body %}
+<div class='container-fluid container-lg my-4 my-xl-5'>
+  <div class='row'>
+    <div class='col-xl-9 col-12'>
+    {% include 'openedx_lti_tool_plugin/course_outline.html' %}
+    </div>
+  </div>
+</div>
+{% endblock %}

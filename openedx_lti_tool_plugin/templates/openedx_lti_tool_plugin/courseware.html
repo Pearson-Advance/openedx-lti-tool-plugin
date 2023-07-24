@@ -1,29 +1,27 @@
-<!doctype html>
-<html lang='{{ request.LANGUAGE_CODE }}'>
-  <head>
-    <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>LTI Courseware</title>
-  </head>
-  <body>
-    <iframe
-      id='unit-iframe'
-      src='{{ xblock_url }}'
-      style='width: 100%;border: none;display: block;'>
-    </iframe>
-    <script>
-      // Detect Window.postMessage() sent from
-      // template courseware/courseware-chromeless.html.
-      window.addEventListener('message', (event)=>{
-        // Validate event origin is from LMS.
-        if (event.origin !== '{{ lms_root_url }}'){
-          return;
-        }
-        // Resize XBlock iframe on plugin.resize event.
-        if (event.data.type === 'plugin.resize'){
-          document.getElementById('unit-iframe').height = event.data.payload.height;
-        }
-      });
-    </script>
-  </body>
-</html>
+{% extends 'openedx_lti_tool_plugin/base.html' %}
+
+{% block title %}LTI Courseware{% endblock %}
+
+{% block body %}
+<iframe
+  id='unit-iframe'
+  src='{{ xblock_url }}'
+  style='width: 100%;border: none;display: block;'
+  scrolling='no'>
+</iframe>
+
+<script>
+  // Detect Window.postMessage() sent from
+  // template courseware/courseware-chromeless.html.
+  window.addEventListener('message', (event)=>{
+    // Validate event origin is from LMS.
+    if (event.origin !== '{{ request.scheme }}://{{ request.get_host }}'){
+      return;
+    }
+    // Resize XBlock iframe on plugin.resize event.
+    if (event.data.type === 'plugin.resize'){
+      document.getElementById('unit-iframe').height = event.data.payload.height;
+    }
+  });
+</script>
+{% endblock %}
