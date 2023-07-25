@@ -8,6 +8,8 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 from django.conf import LazySettings
 
+from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'secret-key'
 
@@ -29,6 +31,27 @@ TIME_ZONE = 'UTC'
 USE_TZ = True
 
 
+# Plugin constants.
+BACKENDS_MODULE_PATH = 'openedx_lti_tool_plugin.edxapp_wrapper.backends'
+OLTITP_URL_WHITELIST = [
+    # This app URLs.
+    fr'^/{AppConfig.name}/?.*$',
+    # Favicon icon URL.
+    r'^/favicon.ico$',
+    # Debug URLs.
+    r'^/__debug__/?.*$',
+    # XBlock handler URLs.
+    r'^/courses/.*/xblock/.*/(handler|handler_noauth)/.*/?.*$',
+    # XBlock resource URL.
+    r'^/xblock/resource/?.*$',
+    # Discussion XBlock URLs.
+    r'^/courses/.*/discussion/?.*$',
+    # Tracking event URLs.
+    r'^/segmentio/event/?.*$',
+    r'^/event/?.*$',
+]
+
+
 def plugin_settings(settings: LazySettings):
     """
     Set of plugin settings used by the Open edX platform.
@@ -37,13 +60,14 @@ def plugin_settings(settings: LazySettings):
     https://github.com/openedx/edx-django-utils/tree/master/edx_django_utils/plugins
     """
     settings.OLTITP_ENABLE_LTI_TOOL = False
+    settings.OLTITP_URL_WHITELIST = OLTITP_URL_WHITELIST
     settings.AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')
+    settings.MIDDLEWARE.append('openedx_lti_tool_plugin.middleware.LtiViewPermissionMiddleware')
 
     # Backends settings
-    backends_module_path = 'openedx_lti_tool_plugin.edxapp_wrapper.backends'
-    settings.OLTITP_COURSE_EXPERIENCES_BACKEND = f'{backends_module_path}.course_experience_module_o_v1'
-    settings.OLTITP_COURSEWARE_BACKEND = f'{backends_module_path}.courseware_module_o_v1'
-    settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{backends_module_path}.learning_sequences_module_o_v1'
-    settings.OLTITP_MODULESTORE_BACKEND = f'{backends_module_path}.modulestore_module_o_v1'
-    settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{backends_module_path}.safe_sessions_module_o_v1'
-    settings.OLTITP_STUDENT_BACKEND = f'{backends_module_path}.student_module_o_v1'
+    settings.OLTITP_COURSE_EXPERIENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.course_experience_module_o_v1'
+    settings.OLTITP_COURSEWARE_BACKEND = f'{BACKENDS_MODULE_PATH}.courseware_module_o_v1'
+    settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.learning_sequences_module_o_v1'
+    settings.OLTITP_MODULESTORE_BACKEND = f'{BACKENDS_MODULE_PATH}.modulestore_module_o_v1'
+    settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{BACKENDS_MODULE_PATH}.safe_sessions_module_o_v1'
+    settings.OLTITP_STUDENT_BACKEND = f'{BACKENDS_MODULE_PATH}.student_module_o_v1'
