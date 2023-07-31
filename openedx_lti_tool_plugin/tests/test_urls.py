@@ -29,6 +29,10 @@ class TestUrls(TestCase):
             resolve(reverse('lti1p3-launch', args=[COURSE_ID])).func.view_class,
             LtiToolLaunchView,
         )
+        self.assertEqual(
+            resolve(reverse('lti1p3-launch', args=[COURSE_ID, USAGE_KEY])).func.view_class,
+            LtiToolLaunchView,
+        )
 
     def test_lti_tool_jwks_url_resolves(self):
         """Test LtiToolLoginView URL can be resolved."""

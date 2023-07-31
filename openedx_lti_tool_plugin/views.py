@@ -20,7 +20,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateResponseMixin, View
-from opaque_keys.edx.keys import CourseKey
+from opaque_keys.edx.keys import CourseKey, UsageKey
 from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
@@ -215,14 +215,17 @@ class LtiToolLaunchView(LtiToolBaseView):
         self,
         request: HttpRequest,
         course_id: str,
+        usage_key_string: str = '',
     ) -> Union[JsonResponse, HttpResponseBadRequest]:
         """Process LTI 1.3 platform launch requests.
 
-        Returns a LTI launch of a requested XBlock.
+        If the usage_key_string param is present, returns an LTI launch of the unit/component
+        associated with the Usage Key, otherwise it returns the launch for the whole course.
 
         Args:
             request: HTTP request object.
             course_id: Course ID string.
+            usage_key_string: Usage key of the component or unit.
 
         Returns:
             HTTP response with LTI launch content or bad request error.
@@ -255,8 +258,20 @@ class LtiToolLaunchView(LtiToolBaseView):
             log.error('LTI 1.3: Course enrollment failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        # Redirect launch to course home.
-        return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
+        if not usage_key_string:
+            return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
+
+        usage_key = UsageKey.from_string(usage_key_string)
+
+        if str(usage_key.course_key) != course_id:
+            log.error('LTI 1.3: Unit/component does not belong to course.')
+            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+        if usage_key.block_type in ['chapter', 'sequential']:
+            log.error('LTI 1.3: Invalid xblock type: %s', usage_key.block_type)
+            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+        return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
 
 
 class LtiToolJwksView(LtiToolBaseView):

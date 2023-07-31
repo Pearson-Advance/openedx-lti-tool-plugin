@@ -1,6 +1,7 @@
 """Tests for the openedx_lti_tool_plugin views module."""
 from unittest.mock import MagicMock, patch
 
+from ddt import data, ddt
 from django.http.response import Http404
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -220,13 +221,15 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
             self.view_class.as_view()(self.factory.post(self.url))
 
 
+@ddt
 class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     """Test LTI 1.3 platform tool launch view."""
 
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        self.url = reverse('lti1p3-launch', args=[COURSE_ID])
+        self.url = reverse('lti1p3-launch', args=[COURSE_ID, ''])
+        self.url_usage_key = reverse('lti1p3-launch', args=[COURSE_ID, USAGE_KEY])
         self.view_class = LtiToolLaunchView
         self.enrollment_mock = MagicMock()
 
@@ -495,6 +498,186 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
                 'openedx_lti_tool_plugin.views',
                 'ERROR',
                 'LTI 1.3: Course enrollment failed: ',
+            ),
+        )
+        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
+        self.assertEqual(response.status_code, 400)
+
+    @patch(
+        'openedx_lti_tool_plugin.views.redirect',
+        return_value=MagicMock(status_code=200, content='random-content'),
+    )
+    @patch.object(LtiToolLaunchView, 'enroll')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    @patch('openedx_lti_tool_plugin.views.UsageKey')
+    def test_post_with_course_id_and_usage_key(
+        self,
+        usage_key_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        redirect_mock: MagicMock,
+    ):
+        """Test POST request with correct Course ID and Usage Key.
+
+        Args:
+            usage_key_mock: Mocked UsageKey class.
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_key_mock: Mocked CourseKey from_string method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            enroll_mock: Mocked LtiToolLaunchView enroll method.
+            modulestore_mock: Mocked modulestore class.
+            redirect_mock: Mocked redirect function.
+        """
+        usage_key_mock.from_string.return_value = MagicMock(
+            course_key=COURSE_ID,
+            block_type='unit',
+        )
+        request = self.factory.post(self.url_usage_key)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
+
+        usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
+        redirect_mock.assert_called_once_with(f'{App.name}:lti-xblock', USAGE_KEY)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, 'random-content')
+
+    @patch(
+        'openedx_lti_tool_plugin.views.redirect',
+        return_value=MagicMock(status_code=200, content='random-content'),
+    )
+    @patch.object(LtiToolLaunchView, 'enroll')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    def test_post_with_course_id_and_without_usage_key(
+        self,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        redirect_mock: MagicMock,
+    ):
+        """Test POST request with Course ID present and Usage Key missing.
+
+        Args:
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_key_mock: Mocked CourseKey from_string method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            enroll_mock: Mocked LtiToolLaunchView enroll method.
+            modulestore_mock: Mocked modulestore class.
+            redirect_mock: Mocked redirect function.
+        """
+        request = self.factory.post(self.url)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID)
+
+        redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, 'random-content')
+
+    @log_capture()
+    @patch.object(LtiToolLaunchView, 'enroll')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    @patch('openedx_lti_tool_plugin.views.UsageKey')
+    def test_post_with_usage_key_not_related_to_course(
+        self,
+        usage_key_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        log: LogCaptureForDecorator,
+    ):
+        """Test POST request with Usage Key not associated to Course ID.
+
+        Args:
+            usage_key_mock: Mocked UsageKey class.
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_key_mock: Mocked CourseKey from_string method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            enroll_mock: Mocked LtiToolLaunchView enroll method.
+            log: LogCapture fixture.
+        """
+        usage_key_mock.from_string.return_value = MagicMock(course_key='test-course-id-wrong')
+        request = self.factory.post(self.url_usage_key)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
+
+        usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
+        log.check(
+            (
+                'openedx_lti_tool_plugin.views',
+                'ERROR',
+                'LTI 1.3: Unit/component does not belong to course.',
+            ),
+        )
+        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
+        self.assertEqual(response.status_code, 400)
+
+    @log_capture()
+    @data('chapter', 'sequential')
+    @patch.object(LtiToolLaunchView, 'enroll')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    @patch('openedx_lti_tool_plugin.views.UsageKey')
+    def test_post_with_usage_key_block_having_incorrect_types(
+        self,
+        block_type: MagicMock,
+        usage_key_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        log: LogCaptureForDecorator,
+    ):
+        """Test POST request with block having incorrect block types.
+
+        Args:
+            usage_key_mock: Mocked UsageKey class.
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_key_mock: Mocked CourseKey from_string method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            enroll_mock: Mocked LtiToolLaunchView enroll method.
+            modulestore_mock: Mocked modulestore class.
+            log: LogCapture fixture.
+        """
+        usage_key_mock.from_string.return_value = MagicMock(
+            course_key=COURSE_ID,
+            block_type=block_type,
+        )
+        request = self.factory.post(self.url_usage_key)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
+
+        usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
+        log.check(
+            (
+                'openedx_lti_tool_plugin.views',
+                'ERROR',
+                f'LTI 1.3: Invalid xblock type: {block_type}',
             ),
         )
         self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)

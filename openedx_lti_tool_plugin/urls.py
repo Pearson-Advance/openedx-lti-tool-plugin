@@ -13,6 +13,11 @@ urlpatterns = [
             views.LtiToolLaunchView.as_view(),
             name='lti1p3-launch',
         ),
+        re_path(
+            fr'^launch/{settings.COURSE_ID_PATTERN}/{settings.USAGE_KEY_PATTERN}$',
+            views.LtiToolLaunchView.as_view(),
+            name='lti1p3-launch',
+        ),
     ])),
     re_path(
         fr'^course/{settings.COURSE_ID_PATTERN}/home$',
