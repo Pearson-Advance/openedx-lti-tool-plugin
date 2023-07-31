@@ -36,7 +36,7 @@ upgrade: ## update the requirements/*.txt files with the latest packages satisfy
 requirements: ## install core requirements
 	pip install -r requirements/base.txt
 
-dev-requirements: ## install development requirements
+dev-requirements: requirements ## install development requirements and Django
 	pip install -r requirements/test.txt
 
 quality: clean ## check coding style

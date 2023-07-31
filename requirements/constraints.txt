@@ -8,20 +8,26 @@
 # pin when possible.  Writing an issue against the offending project and
 # linking to it here is good.
 
-# using LTS django version
-Django<4.0
-
-# setuptools==60.0 had breaking changes and busted several service's pipeline.
-# Details can be found here: https://github.com/pypa/setuptools/issues/2940
-setuptools<60
-
-# tox>4.0.0 isn't yet compatible with many tox plugins, causing CI failures in almost all repos.
-# Details can be found in this discussion: https://github.com/tox-dev/tox/discussions/1810
+# use edx-platform package versions.
+asgiref<=3.5.2
+certifi<=2022.9.24
+cffi<=1.15.1
+charset-normalizer<2.1.0
+cryptography<=36.0.2
+deprecated<=1.2.13
+django<4.0
+edx-opaque-keys<=2.3.0
+idna<=3.4
+jwcrypto<=1.4.2
+pbr<=5.10.0
+pycparser<=2.21
+pyjwt<=2.5.0
+pylti1p3<=1.12.1
+pymongo<=3.12.3
+pytz<=2022.2.1
+requests<=2.28.1
+sqlparse<=0.4.3
+stevedore<=4.0.0
 tox<4.0.0
-
-# pylint==2.15.0 includes changes that makes pylint-django to break:
-# https://github.com/PyCQA/pylint-django/issues/370
-pylint<2.15.0
-
-# use edx-platform version pylti1p3==1.10.0.
-pylti1p3<1.11.0
+urllib3<=1.26.12
+wrapt<=1.14.1

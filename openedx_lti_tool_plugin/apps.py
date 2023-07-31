@@ -23,3 +23,12 @@ class OpenEdxLtiToolPluginConfig(AppConfig):
             },
         },
     }
+
+    def ready(self):
+        """App ready method.
+
+        This will import the app signals to allow them to work.
+        """
+        from openedx_lti_tool_plugin import (  # pylint: disable=unused-import, import-outside-toplevel, cyclic-import
+            signals,
+        )

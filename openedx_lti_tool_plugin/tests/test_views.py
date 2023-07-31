@@ -1,3 +1,4 @@
+
 """Tests for the openedx_lti_tool_plugin views module."""
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +14,7 @@ from testfixtures.logcapture import LogCaptureForDecorator
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as App
 from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
-from openedx_lti_tool_plugin.models import LtiProfile
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile
 from openedx_lti_tool_plugin.tests import AUD, COURSE_ID, ISS, SUB, USAGE_KEY
 from openedx_lti_tool_plugin.views import (
     LtiBaseView,
@@ -315,32 +316,35 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         return_value=MagicMock(status_code=200, content='random-content'),
     )
     @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
-    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
-    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
-    def test_post_with_identity_claims(
+    def test_post_with_course_launch(
         self,
         message_launch_mock: MagicMock,
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
         get_launch_data_mock: MagicMock,
-        course_key_mock: MagicMock,
+        course_access_configuration_filter_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
+        course_key_mock: MagicMock,
         enroll_mock: MagicMock,
         redirect_mock: MagicMock,
     ):
-        """Test POST request with identiy claims to test authentication works.
+        """Test POST request with course launch.
 
         Args:
             message_launch_mock: Mocked DjangoMessageLaunch class.
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            course_key_mock: Mocked CourseKey from_string method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            course_key_mock: Mocked CourseKey from_string method.
             enroll_mock: Mocked enroll LtiToolLaunchView method.
             redirect_mock: Mocked redirect function.
         """
@@ -350,12 +354,118 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
         message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         get_launch_data_mock.assert_called_once_with()
+        course_access_configuration_filter_mock.assert_called_once_with(
+            lti_tool=tool_conf_mock().get_lti_tool(
+                get_launch_data_mock()['iss'],
+                get_launch_data_mock()['azp'],
+            ),
+        )
+        course_access_configuration_filter_mock().first.assert_called_once_with()
+        course_access_configuration_filter_mock().first().is_course_id_allowed.assert_called_once_with(COURSE_ID)
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, 'random-user', 'random-course-key')
         redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, 'random-content')
+
+    @log_capture()
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
+    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    def test_post_returns_none_course_access_config(
+        self,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,
+        course_access_configuration_filter_mock: MagicMock,
+        log: LogCaptureForDecorator,
+    ):
+        """Test POST request CourseAccessConfiguration query returns None.
+
+        Args:
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
+            tool_storage_mock: Mocked DjangoCacheDataStorage class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
+            log: LogCapture fixture.
+        """
+        course_access_configuration_filter_mock.return_value.first.return_value = None
+
+        request = self.factory.post(self.url)
+        request.user = self.user
+        response = self.view_class.as_view()(request, COURSE_ID)
+
+        course_access_configuration_filter_mock.assert_called_once_with(
+            lti_tool=tool_conf_mock().get_lti_tool(
+                get_launch_data_mock()['iss'],
+                get_launch_data_mock()['azp'],
+            ),
+        )
+        course_access_configuration_filter_mock().first.assert_called_once_with()
+        log.check(
+            (
+                'openedx_lti_tool_plugin.views',
+                'ERROR',
+                'LTI 1.3: Course access configuration not found.',
+            ),
+        )
+        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
+        self.assertEqual(response.status_code, 400)
+
+    @log_capture()
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
+    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    def test_post_with_unallowed_course(
+        self,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,
+        course_access_configuration_filter_mock: MagicMock,
+        log: LogCaptureForDecorator,
+    ):
+        """Test POST request with unallowed course.
+
+        Args:
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
+            tool_storage_mock: Mocked DjangoCacheDataStorage class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
+            log: LogCapture fixture.
+        """
+        course_access_configuration_filter_mock.return_value.first.\
+            return_value.is_course_id_allowed.return_value = False
+
+        request = self.factory.post(self.url)
+        request.user = self.user
+        response = self.view_class.as_view()(request, COURSE_ID)
+
+        course_access_configuration_filter_mock.assert_called_once_with(
+            lti_tool=tool_conf_mock().get_lti_tool(
+                get_launch_data_mock()['iss'],
+                get_launch_data_mock()['azp'],
+            ),
+        )
+        course_access_configuration_filter_mock().first.assert_called_once_with()
+        course_access_configuration_filter_mock().first().is_course_id_allowed.assert_called_once_with(COURSE_ID)
+        log.check(
+            (
+                'openedx_lti_tool_plugin.views',
+                'ERROR',
+                f'LTI 1.3: Course ID {COURSE_ID} is not allowed.',
+            ),
+        )
+        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
+        self.assertEqual(response.status_code, 400)
 
     @log_capture()
     @patch.object(
@@ -369,9 +479,9 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     def test_post_raises_ltiexception(
         self,
-        message_launch_mock: MagicMock,
-        tool_conf_mock: MagicMock,
-        tool_storage_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
@@ -388,11 +498,6 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
-        message_launch_mock.assert_called_once_with(
-            request,
-            tool_conf_mock(),
-            launch_data_storage=tool_storage_mock(),
-        )
         get_launch_data_mock.assert_called_once_with()
         self.assertRaises(LtiException, get_launch_data_mock)
         log.check(
@@ -407,16 +512,18 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
     @log_capture()
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value=False)
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     def test_post_returns_false_authenticate_and_login(
         self,
-        message_launch_mock: MagicMock,
-        tool_conf_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        get_launch_data_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
@@ -427,6 +534,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             log: LogCapture fixture.
         """
@@ -434,8 +542,6 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
-        message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
-        get_launch_data_mock.assert_called_once_with()
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         log.check(
             (
@@ -450,20 +556,22 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @log_capture()
     @patch('openedx_lti_tool_plugin.views.course_enrollment_exception', return_value=Exception)
     @patch.object(LtiToolLaunchView, 'enroll')
-    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     def test_post_enroll_raises_exception(
         self,
-        message_launch_mock: MagicMock,
-        tool_conf_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        get_launch_data_mock: MagicMock,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         course_key_mock: MagicMock,
-        authenticate_and_login_mock: MagicMock,
         enroll_mock: MagicMock,
         course_enrollment_exception_mock: MagicMock,
         log: LogCaptureForDecorator,
@@ -475,8 +583,9 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            course_key_mock: Mocked CourseKey from_string method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            course_key_mock: Mocked CourseKey from_string method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             course_enrollment_exception_mock: Mocked course_enrollment_exception function.
             log: LogCapture fixture.
@@ -487,9 +596,6 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
-        message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
-        get_launch_data_mock.assert_called_once_with()
-        authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, 'random-user', 'random-course-key')
         course_enrollment_exception_mock.assert_called_once_with()
@@ -510,14 +616,18 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     @patch('openedx_lti_tool_plugin.views.UsageKey')
     def test_post_with_course_id_and_usage_key(
         self,
         usage_key_mock: MagicMock,
         message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
@@ -528,11 +638,12 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         Args:
             usage_key_mock: Mocked UsageKey class.
             message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
-            modulestore_mock: Mocked modulestore class.
             redirect_mock: Mocked redirect function.
         """
         usage_key_mock.from_string.return_value = MagicMock(
@@ -556,12 +667,16 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     def test_post_with_course_id_and_without_usage_key(
         self,
         message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
@@ -571,11 +686,12 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
         Args:
             message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
-            modulestore_mock: Mocked modulestore class.
             redirect_mock: Mocked redirect function.
         """
         request = self.factory.post(self.url)
@@ -591,14 +707,18 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     @patch('openedx_lti_tool_plugin.views.UsageKey')
     def test_post_with_usage_key_not_related_to_course(
         self,
         usage_key_mock: MagicMock,
         message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
@@ -609,7 +729,9 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         Args:
             usage_key_mock: Mocked UsageKey class.
             message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
@@ -637,7 +759,9 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
     @patch('openedx_lti_tool_plugin.views.UsageKey')
     def test_post_with_usage_key_block_having_incorrect_types(
@@ -645,7 +769,9 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         block_type: MagicMock,
         usage_key_mock: MagicMock,
         message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
@@ -656,11 +782,12 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         Args:
             usage_key_mock: Mocked UsageKey class.
             message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             course_key_mock: Mocked CourseKey from_string method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
-            modulestore_mock: Mocked modulestore class.
             log: LogCapture fixture.
         """
         usage_key_mock.from_string.return_value = MagicMock(
