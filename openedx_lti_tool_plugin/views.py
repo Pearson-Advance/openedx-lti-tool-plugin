@@ -15,7 +15,6 @@ from django.http import (
 )
 from django.http.request import HttpRequest
 from django.shortcuts import redirect
-from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -307,7 +306,7 @@ class LtiXBlockView(LtiBaseView):
         return render_xblock(request, usage_key_string, check_if_enrolled=True)
 
 
-@method_decorator(xframe_options_exempt, name='dispatch')
+@method_decorator([xframe_options_exempt, login_required], name='dispatch')
 class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
     """LTI courseware view."""
 
@@ -316,22 +315,53 @@ class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
     def get(
         self,
         request: HttpRequest,
-        unit_key: str,
-    ) -> HttpResponse:
+        course_id: str,
+        usage_key_string: str,
+    ) -> Union[HttpResponse, HttpResponseBadRequest]:
         """Render custom LTI courseware view.
 
         Returns a courseware view for LTI launches.
 
         Args:
             request: HTTP request object.
-            unit_key: Unit key string.
+            usage_key_string: Usage key string.
 
         Returns:
-            HTTP response with rendered LTI courseware view.
+            Template response with rendered LTI courseware view
+            or HTTP 403 response if user is not enrolled.
+
+        Raises:
+            Http404: Course is not found, the unit is not in course.
         """
+        if not self.is_user_enrolled(request.user, course_id):
+            return HttpResponseForbidden(_(f'{request.user} is not enrolled to {course_id}'))
+
+        course_outline = self.get_course_outline(request, course_id)
+
+        # Get all course units and current unit on course.
+        units = []
+        unit_obj = None
+
+        for chapter in course_outline.get('children', []):
+            for sequence in chapter.get('children', []):
+                for unit in sequence.get('children', []):
+                    unit_id = unit.get('id')
+                    units.append(unit_id)
+
+                    # Get current unit ID from unit.
+                    if usage_key_string == unit_id:
+                        unit_obj = unit
+
+        # Return HTTP 404 if unit is not found.
+        if not unit_obj:
+            raise Http404()
+
         return self.render_to_response(
             {
-                'xblock_url': reverse(f'{AppConfig.name}:lti-xblock', args=[unit_key]),
+                'course_id': course_id,
+                'course_outline': course_outline,
+                'units': units,
+                'unit_obj': unit_obj,
             },
         )
 
@@ -361,4 +391,7 @@ class LtiCourseHomeView(TemplateResponseMixin, LtiBaseView):
         if not self.is_user_enrolled(request.user, course_id):
             return HttpResponseForbidden(_(f'{request.user} is not enrolled to {course_id}'))
 
-        return self.render_to_response({'course_outline': self.get_course_outline(request, course_id)})
+        return self.render_to_response({
+            'course_outline': self.get_course_outline(request, course_id),
+            'course_id': course_id,
+        })

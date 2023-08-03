@@ -1,8 +1,8 @@
 <a
   id='{{ block.id|urlencode }}'
-  class='{{ block.type }}-item list-group-item list-group-item-action'
+  class='{{ block.type }}-item list-group-item list-group-item-action {% if is_active %}active{% endif %}'
   {% if block.type == 'vertical' %}
-  href={% url request.resolver_match.app_name|add:':lti-xblock' block.id %}
+  href={% url request.resolver_match.app_name|add:':lti-courseware' course_id block.id%}
   {% else %}
   href="#{{ block.id|urlencode }}-collapse"
   {% endif %}
@@ -11,9 +11,6 @@
   aria-controls='{{ block.id|urlencode }}-collapse'
   aria-expanded='false'
   {% endif %}>
-  <i
-  class='fa fa-{% if block.type == 'vertical' %}circle{% else %}folder{% endif %}-o'
-  aria-hidden='true'>
-  </i>
+  <i class='fa fa-{% if block.type == "vertical" %}circle{% else %}folder{% endif %}-o' aria-hidden='true'></i>
   {{ block.display_name }}
 </a>

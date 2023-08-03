@@ -572,37 +572,91 @@ class TestLtiCoursewareView(LtiViewMixin, TestCase):
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        self.url = reverse('lti-courseware', args=[USAGE_KEY])
+        self.url = reverse('lti-courseware', args=[COURSE_ID, USAGE_KEY])
+        self.request = self.factory.get(self.url)
+        self.request.user = self.user
         self.view_class = LtiCoursewareView
+        self.course_outline = {'children': [{'children': [{'children': [{'id': USAGE_KEY}]}]}]}
 
-    @patch('openedx_lti_tool_plugin.views.reverse', return_value='random-xblock-url')
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.is_user_enrolled')
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.get_course_outline')
     @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.render_to_response')
-    def test_with_unit_key(
+    def test_get_with_course_id_and_unit_id(
         self,
         render_to_response_mock: MagicMock,
-        reverse_mock: MagicMock,
+        get_course_outline: MagicMock,
+        is_user_enrolled_mock: MagicMock,
     ):
-        """Test GET request with unit key.
+        """Test GET request with course ID and unit ID.
 
         Args:
             render_to_response_mock: Mocked render_to_response function.
-            reverse_mock: Mocked reverse function.
+            get_course_outline: Mocked get_course_outline function.
+            is_user_enrolled_mock: Mocked is_user_enrolled method.
         """
-        request = self.factory.get(self.url)
-        self.view_class.as_view()(request, USAGE_KEY)
+        get_course_outline.return_value = self.course_outline
 
-        reverse_mock.assert_called_once_with(f'{App.name}:lti-xblock', args=[USAGE_KEY])
-        render_to_response_mock.assert_called_once_with(
-            {
-                'xblock_url': 'random-xblock-url'
-            },
-        )
+        self.view_class.as_view()(self.request, COURSE_ID, USAGE_KEY)
+
+        is_user_enrolled_mock.assert_called_once_with(self.request.user, COURSE_ID)
+        get_course_outline.assert_called_once_with(self.request, COURSE_ID)
+        render_to_response_mock.assert_called_once_with({
+            'course_id': COURSE_ID,
+            'course_outline': self.course_outline,
+            'units': [USAGE_KEY],
+            'unit_obj': {'id': USAGE_KEY},
+        })
+
+    @patch('openedx_lti_tool_plugin.views._')
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.is_user_enrolled', return_value=None)
+    def test_with_user_not_enrolled(
+        self,
+        is_user_enrolled_mock: MagicMock,
+        gettext_mock: MagicMock,
+    ):
+        """Test GET request with user not enrolled.
+
+        Args:
+            is_user_enrolled_mock: Mocked is_user_enrolled method.
+            http_response_forbidden_mock: Mocked HttpResponseForbidden class.
+            gettext_mock: Mocked gettext function.
+        """
+        not_enrolled_message = f'{self.request.user} is not enrolled to {COURSE_ID}'
+        gettext_mock.return_value = not_enrolled_message
+
+        response = self.view_class.as_view()(self.request, COURSE_ID, USAGE_KEY)
+
+        is_user_enrolled_mock.assert_called_once_with(self.request.user, COURSE_ID)
+        gettext_mock.assert_called_once_with(not_enrolled_message)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.content.decode('utf-8'), not_enrolled_message)
+
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.is_user_enrolled')
+    @patch('openedx_lti_tool_plugin.views.LtiCoursewareView.get_course_outline')
+    def test_get_with_unknown_unit_id(
+        self,
+        get_course_outline: MagicMock,
+        is_user_enrolled_mock: MagicMock,
+    ):
+        """Test GET request with unknown unit ID.
+
+        Args:
+            get_course_outline: Mocked get_course_outline function.
+            is_user_enrolled_mock: Mocked is_user_enrolled method.
+        """
+        get_course_outline.return_value = self.course_outline
+
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.request, COURSE_ID, 'unexistent-key')
+
+        is_user_enrolled_mock.assert_called_once_with(self.request.user, COURSE_ID)
+        get_course_outline.assert_called_once_with(self.request, COURSE_ID)
 
     @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):
         """Test raise 404 response when plugin is disabled."""
         with self.assertRaises(Http404):
-            self.view_class.as_view()(self.factory.get(self.url))
+            self.view_class.as_view()(self.request)
 
 
 class TestLtiCourseHomeView(LtiViewMixin, TestCase):
@@ -636,7 +690,10 @@ class TestLtiCourseHomeView(LtiViewMixin, TestCase):
 
         is_user_enrolled_mock.assert_called_once_with(self.request.user, COURSE_ID)
         get_course_outline_mock.assert_called_once_with(self.request, COURSE_ID)
-        render_to_response_mock.assert_called_once_with({'course_outline': get_course_outline_mock()})
+        render_to_response_mock.assert_called_once_with({
+            'course_outline': get_course_outline_mock(),
+            'course_id': COURSE_ID,
+        })
 
     @patch('openedx_lti_tool_plugin.views._')
     @patch('openedx_lti_tool_plugin.views.HttpResponseForbidden')

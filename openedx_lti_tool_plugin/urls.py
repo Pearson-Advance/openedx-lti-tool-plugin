@@ -20,7 +20,7 @@ urlpatterns = [
         name='lti-course-home',
     ),
     re_path(
-        r'^course/(?P<unit_key>[^/]*)$',
+        fr'^course/{settings.COURSE_ID_PATTERN}/{settings.USAGE_KEY_PATTERN}$',
         views.LtiCoursewareView.as_view(),
         name='lti-courseware',
     ),
