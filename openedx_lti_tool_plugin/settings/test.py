@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'waffle',
     'openedx_lti_tool_plugin',
     'pylti1p3.contrib.django.lti1p3_tool_config',
 ]

@@ -311,6 +311,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             request=None,
         )
 
+    @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
+    @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch(
         'openedx_lti_tool_plugin.views.redirect',
         return_value=MagicMock(status_code=200, content='random-content'),
@@ -334,6 +336,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_key_mock: MagicMock,
         enroll_mock: MagicMock,
         redirect_mock: MagicMock,
+        course_access_configuration_mock: MagicMock,
+        allow_complete_course_launch_mock: MagicMock,
     ):
         """Test POST request with course launch.
 
@@ -347,13 +351,19 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             course_key_mock: Mocked CourseKey from_string method.
             enroll_mock: Mocked enroll LtiToolLaunchView method.
             redirect_mock: Mocked redirect function.
+            course_access_configuration_mock: Mocked course_access_configuration waffle switch.
+            allow_complete_course_launch_mock: Mocked allow_complete_course_launch waffle switch.
         """
+        course_access_configuration_mock.is_enabled.return_value = True
+        allow_complete_course_launch_mock.is_enabled.return_value = True
+
         request = self.factory.post(self.url)
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         get_launch_data_mock.assert_called_once_with()
+        course_access_configuration_mock.is_enabled.assert_called_once_with()
         course_access_configuration_filter_mock.assert_called_once_with(
             lti_tool=tool_conf_mock().get_lti_tool(
                 get_launch_data_mock()['iss'],
@@ -365,11 +375,77 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, 'random-user', 'random-course-key')
+        allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
+        redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, 'random-content')
+
+    @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
+    @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
+    @patch(
+        'openedx_lti_tool_plugin.views.redirect',
+        return_value=MagicMock(status_code=200, content='random-content'),
+    )
+    @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseAccessConfiguration.objects, 'filter')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
+    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    def test_post_with_course_access_configuration_disabled(
+        self,
+        message_launch_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        get_launch_data_mock: MagicMock,
+        course_access_configuration_filter_mock: MagicMock,
+        authenticate_and_login_mock: MagicMock,
+        course_key_mock: MagicMock,
+        enroll_mock: MagicMock,
+        redirect_mock: MagicMock,
+        course_access_configuration_mock: MagicMock,
+        allow_complete_course_launch_mock: MagicMock,
+    ):
+        """Test POST request with course_access_configuration switch disabled.
+
+        Args:
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            tool_conf_mock: Mocked DjangoDbToolConf class.
+            tool_storage_mock: Mocked DjangoCacheDataStorage class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            course_key_mock: Mocked CourseKey from_string method.
+            enroll_mock: Mocked enroll LtiToolLaunchView method.
+            redirect_mock: Mocked redirect function.
+            course_access_configuration_mock: Mocked course_access_configuration waffle switch.
+            allow_complete_course_launch_mock: Mocked allow_complete_course_launch waffle switch.
+        """
+        course_access_configuration_mock.is_enabled.return_value = False
+        allow_complete_course_launch_mock.is_enabled.return_value = True
+
+        request = self.factory.post(self.url)
+        request.user = self.user
+        response = self.view_class.as_view()(request, COURSE_ID)
+
+        message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
+        get_launch_data_mock.assert_called_once_with()
+        course_access_configuration_mock.is_enabled.assert_called_once_with()
+        course_access_configuration_filter_mock.assert_not_called()
+        course_access_configuration_filter_mock().first.assert_not_called()
+        course_access_configuration_filter_mock().first().is_course_id_allowed.assert_not_called()
+        authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
+        course_key_mock.assert_called_once_with(COURSE_ID)
+        enroll_mock.assert_called_once_with(request, 'random-user', 'random-course-key')
+        allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
         redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, 'random-content')
 
     @log_capture()
+    @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
@@ -382,6 +458,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,
         course_access_configuration_filter_mock: MagicMock,
+        course_access_configuration_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test POST request CourseAccessConfiguration query returns None.
@@ -392,14 +469,17 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
             course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
+            course_access_configuration_mock: Mocked course_access_configuration waffle switch.
             log: LogCapture fixture.
         """
+        course_access_configuration_mock.is_enabled.return_value = True
         course_access_configuration_filter_mock.return_value.first.return_value = None
 
         request = self.factory.post(self.url)
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
+        course_access_configuration_mock.is_enabled.assert_called_once_with()
         course_access_configuration_filter_mock.assert_called_once_with(
             lti_tool=tool_conf_mock().get_lti_tool(
                 get_launch_data_mock()['iss'],
@@ -418,6 +498,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
     @log_capture()
+    @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
@@ -430,6 +511,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,
         course_access_configuration_filter_mock: MagicMock,
+        course_access_configuration_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test POST request with unallowed course.
@@ -440,8 +522,10 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
             course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
+            course_access_configuration_mock: Mocked course_access_configuration waffle switch.
             log: LogCapture fixture.
         """
+        course_access_configuration_mock.is_enabled.return_value = True
         course_access_configuration_filter_mock.return_value.first.\
             return_value.is_course_id_allowed.return_value = False
 
@@ -449,6 +533,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         request.user = self.user
         response = self.view_class.as_view()(request, COURSE_ID)
 
+        course_access_configuration_mock.is_enabled.assert_called_once_with()
         course_access_configuration_filter_mock.assert_called_once_with(
             lti_tool=tool_conf_mock().get_lti_tool(
                 get_launch_data_mock()['iss'],
@@ -609,6 +694,57 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
         self.assertEqual(response.status_code, 400)
 
+    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
+    @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
+    @patch.object(LtiToolLaunchView, 'enroll')
+    @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
+    @patch.object(CourseKey, 'from_string', return_value='random-course-key')
+    @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value=BASE_LAUNCH_DATA)
+    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch.object(DjangoMessageLaunch, '__init__', return_value=None)
+    def test_post_with_allow_complete_course_launch_disabled(
+        self,
+        message_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        course_access_configuration_mock: MagicMock,
+        allow_complete_course_launch_mock: MagicMock,
+        log,
+    ):
+        """Test POST request with correct Course ID and Usage Key.
+
+        Args:
+            usage_key_mock: Mocked UsageKey class.
+            message_launch_mock: Mocked DjangoMessageLaunch class.
+            get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
+            course_key_mock: Mocked CourseKey from_string method.
+            authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
+            enroll_mock: Mocked LtiToolLaunchView enroll method.
+            allow_complete_course_launch_mock: Mocked allow_complete_course_launch waffle switch.
+            log: LogCapture fixture.
+        """
+        course_access_configuration_mock.is_enabled.return_value = False
+        allow_complete_course_launch_mock.is_enabled.return_value = False
+        request = self.factory.post(self.url)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID)
+
+        allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
+        log.check(
+            (
+                'openedx_lti_tool_plugin.views',
+                'ERROR',
+                'LTI 1.3: Complete course launches are not enabled.',
+            ),
+        )
+        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
+        self.assertEqual(response.status_code, 400)
+
     @patch(
         'openedx_lti_tool_plugin.views.redirect',
         return_value=MagicMock(status_code=200, content='random-content'),
@@ -660,6 +796,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, 'random-content')
 
+    @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch(
         'openedx_lti_tool_plugin.views.redirect',
         return_value=MagicMock(status_code=200, content='random-content'),
@@ -681,6 +818,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
         redirect_mock: MagicMock,
+        allow_complete_course_launch_mock,
     ):
         """Test POST request with Course ID present and Usage Key missing.
 
@@ -693,12 +831,15 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             redirect_mock: Mocked redirect function.
+            allow_complete_course_launch_mock: Mocked allow_complete_course_launch waffle switch.
         """
+        allow_complete_course_launch_mock.is_enabled.return_value = True
         request = self.factory.post(self.url)
         request.user = self.user
 
         response = self.view_class.as_view()(request, COURSE_ID)
 
+        allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
         redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, 'random-content')

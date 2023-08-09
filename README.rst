@@ -51,3 +51,14 @@ Development Setup
 .. code-block:: bash
 
   make dev-requirements
+
+Settings
+========
+
+- OLTITP_ENABLE_LTI_TOOL: Enables or disables the whole LTI tool plugin.
+
+Switches
+========
+
+- openedx_lti_tool_plugin.allow_complete_course_launch: A switch that allows to launch an entire OpenedX course.
+- openedx_lti_tool_plugin.course_access_configuration: A switch to restrict the course access of each LTI tool using a CourseAccessConfiguration asociated to the LTI tool.
