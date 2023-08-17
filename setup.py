@@ -29,7 +29,7 @@ def load_requirements(*requirements_paths):
             # fine to add constraints to an unconstrained package,
             # raise an error if there are already constraints in place
             if existing_version_constraints and existing_version_constraints != version_constraints:
-                raise BaseException(
+                raise BaseException(  # pylint: disable=broad-exception-raised
                     f'Multiple constraint definitions found for {package}:'
                     f' "{existing_version_constraints}" and "{version_constraints}".'
                     f'Combine constraints into one location with {package}'

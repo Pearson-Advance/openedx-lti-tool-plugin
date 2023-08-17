@@ -29,7 +29,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblo
 from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
 from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_user_change_as_expected
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
-from openedx_lti_tool_plugin.models import LtiProfile, UserT
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile, UserT
 from openedx_lti_tool_plugin.utils import get_course_outline
 
 log = logging.getLogger(__name__)
@@ -190,12 +190,7 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         return edx_user
 
-    def enroll(
-        self,
-        request: HttpRequest,
-        edx_user: UserT,
-        course_key: str,
-    ) -> Optional[HttpResponseBadRequest]:
+    def enroll(self, request: HttpRequest, edx_user: UserT, course_key: str):
         """Enroll the LTI profile user to course for the LTI launch.
 
         Args:
@@ -237,6 +232,22 @@ class LtiToolLaunchView(LtiToolBaseView):
             launch_data = launch_message.get_launch_data()
         except LtiException as exc:
             log.error('LTI 1.3: Launch message validation failed: %s', exc)
+            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+        # Validate if LTI tool has access to course.
+        course_access_config = CourseAccessConfiguration.objects.filter(
+            lti_tool=self.tool_config.get_lti_tool(
+                launch_data.get('iss'),
+                launch_data.get('azp'),
+            ),
+        ).first()
+
+        if not course_access_config:
+            log.error('LTI 1.3: Course access configuration not found.')
+            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+        if not course_access_config.is_course_id_allowed(course_id):
+            log.error('LTI 1.3: Course ID %s is not allowed.', course_id)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Authenticate and login LTI profile user.

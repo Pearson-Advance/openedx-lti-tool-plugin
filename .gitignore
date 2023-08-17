@@ -58,4 +58,3 @@ db.sqlite3
 
 # Visual Studio Code
 .vscode/*
-!.vscode/settings.json

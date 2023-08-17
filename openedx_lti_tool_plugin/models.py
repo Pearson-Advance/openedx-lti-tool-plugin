@@ -1,13 +1,18 @@
 """Models for openedx_lti_tool_plugin."""
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Tuple, TypeVar
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
+from opaque_keys import InvalidKeyError
+from opaque_keys.edx.keys import CourseKey
+from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
@@ -124,3 +129,74 @@ class LtiProfile(models.Model):
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
         return f'<LtiProfile, ID: {self.id}>'
+
+
+class CourseAccessConfiguration(models.Model):
+    """Course access configuration.
+
+    A model to store LTI tool course access configuration.
+    """
+
+    EXAMPLE_ID_LIST = 'Example: ["id-1", "id-2", ...]'
+
+    lti_tool = models.OneToOneField(
+        LtiTool,
+        on_delete=models.CASCADE,
+        related_name='openedx_lti_tool_plugin_course_permission',
+        verbose_name=_('LTI Tool'),
+    )
+    allowed_course_ids = models.TextField(
+        verbose_name=_('Allowed Course IDs'),
+        help_text=_(f'List of allowed courses IDs. {EXAMPLE_ID_LIST}'),
+        default=[],
+    )
+
+    class Meta:
+        """Meta options."""
+
+        verbose_name = 'Course access configuration'
+        verbose_name_plural = 'Course access configurations'
+
+    def clean(self):
+        """Model clean method.
+
+        In this method we try to validate if the allowed_course_ids field
+        is a valid list, Example: ["course-id-1", "course-id-2", ...].
+
+        And will also validate that each course ID is a valid course ID.
+        """
+        try:
+            allowed_course_ids = json.loads(self.allowed_course_ids)
+            isinstance(allowed_course_ids, list)
+        except ValueError as exc:
+            raise ValidationError({
+                'allowed_course_ids': _(f'Should be a list. {self.EXAMPLE_ID_LIST}'),
+            }) from exc
+
+        invalid_course_ids = []
+        # Validate the IDs on the allowed_course_ids list.
+        for course_id in allowed_course_ids:
+            try:
+                CourseKey.from_string(course_id)
+            except InvalidKeyError:
+                invalid_course_ids.append(course_id)
+        # Raise exception on any invalid course ID on allowed_course_ids.
+        if invalid_course_ids:
+            raise ValidationError({
+                'allowed_course_ids': _(f'Invalid course IDs: {invalid_course_ids}'),
+            })
+
+    def is_course_id_allowed(self, course_id: str) -> bool:
+        """Check if a course ID is allowed.
+
+        Args:
+            course_id: Course ID string.
+
+        Returns:
+            True if course ID is allowed or false if course ID is not allowed.
+        """
+        return course_id in json.loads(self.allowed_course_ids)
+
+    def __str__(self) -> str:
+        """Get a string representation of this model instance."""
+        return f'<CourseAccessConfiguration, ID: {self.id}>'
