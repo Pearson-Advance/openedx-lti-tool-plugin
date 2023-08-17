@@ -1,18 +1,23 @@
 """Models for openedx_lti_tool_plugin."""
 from __future__ import annotations
 
+import datetime
 import json
 import uuid
-from typing import Tuple, TypeVar
+from typing import Optional, Tuple, TypeVar, Union
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models import QuerySet
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
+from opaque_keys.edx.django.models import LearningContextKeyField
 from opaque_keys.edx.keys import CourseKey
+from pylti1p3.contrib.django import DjangoDbToolConf, DjangoMessageLaunch
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
+from pylti1p3.grade import Grade
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
@@ -200,3 +205,103 @@ class CourseAccessConfiguration(models.Model):
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
         return f'<CourseAccessConfiguration, ID: {self.id}>'
+
+
+class LtiGradedResourceManager(models.Manager):
+    """A manager for the LtiGradedResource model."""
+
+    def all_from_user_id(self, user_id: UserT, context_key: str) -> Optional[QuerySet]:
+        """
+        Retrieve all resources for a given user ID and context key.
+
+        Args:
+            user_id: Open edX user object.
+            context_key: Graded resource opaque key string.
+
+        Returns:
+            LTI graded resource query or None.
+        """
+        return self.filter(
+            lti_profile=LtiProfile.objects.filter(user__id=user_id).first(),
+            context_key=context_key,
+        )
+
+
+class LtiGradedResource(models.Model):
+    """LTI graded resource.
+
+    A unique representation of a LTI graded resource.
+    """
+
+    objects = LtiGradedResourceManager()
+    lti_profile = models.ForeignKey(
+        LtiProfile,
+        on_delete=models.CASCADE,
+        related_name='openedx_lti_tool_plugin_graded_resource',
+        help_text=_('The LTI profile that launched the resource.'),
+    )
+    context_key = LearningContextKeyField(
+        max_length=255,
+        help_text=_('The opaque key string of the resource.'),
+    )
+    lineitem = models.URLField(
+        max_length=255,
+        help_text=_('The AGS lineitem URL.'),
+    )
+
+    class Meta:
+        """Meta options."""
+
+        verbose_name = 'LTI graded resource'
+        verbose_name_plural = 'LTI graded resources'
+        unique_together = ['lti_profile', 'context_key', 'lineitem']
+
+    def update_score(
+        self,
+        given_score: Union[int, float],
+        max_score: Union[int, float],
+        timestamp: datetime.datetime,
+    ):
+        """
+        Use LTI's score service to update the LTI platform's gradebook.
+
+        This method sends a request to the LTI platform to update the assignment score.
+
+        Args:
+            given_score: Score given to the graded resource.
+            max_score: Graded resource max score.
+            timestamp: Score timestamp object.
+        """
+        # Create launch message object and set values.
+        launch_message = DjangoMessageLaunch(request=None, tool_config=DjangoDbToolConf())
+        launch_message.set_auto_validation(enable=False)
+        launch_message.set_jwt({
+            'body': {
+                'iss': self.lti_profile.platform_id,
+                'aud': self.lti_profile.client_id,
+                'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint': {
+                    'lineitem': self.lineitem,
+                    'scope': {
+                        'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem',
+                        'https://purl.imsglobal.org/spec/lti-ags/scope/score',
+                    },
+                },
+            },
+        })
+        launch_message.set_restored()
+        launch_message.validate_registration()
+        launch_message.get_ags()
+        # Create grade object and set grade values.
+        grade = Grade()
+        grade.set_score_given(given_score)
+        grade.set_score_maximum(max_score)
+        grade.set_timestamp(timestamp.isoformat())
+        grade.set_activity_progress('Submitted')
+        grade.set_grading_progress('FullyGraded')
+        grade.set_user_id(self.lti_profile.subject_id)
+        # Send grade update.
+        launch_message.put_grade(grade)  # pylint: disable=no-member
+
+    def __str__(self) -> str:
+        """Get a string representation of this model instance."""
+        return f'<LtiGradedResource, ID: {self.id}>'
