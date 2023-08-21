@@ -16,6 +16,18 @@ Unreleased
 
 *
 
+0.0.3 - 2023-08-21
+********************
+
+Added
+=====
+
+- Added course launch feature.
+- Added unit/component launch feature.
+- Added LTI view permission middleware.
+- Added LTI launch course permission feature.
+- Added LtiGradedResource model.
+
 0.0.2 - 2023-03-06
 ********************
 
@@ -65,6 +77,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.2...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.3
 [0.0.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.2
 [0.0.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.1
+
