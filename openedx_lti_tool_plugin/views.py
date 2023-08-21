@@ -31,6 +31,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_use
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile, UserT
 from openedx_lti_tool_plugin.utils import get_course_outline
+from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
 
 log = logging.getLogger(__name__)
 
@@ -235,20 +236,21 @@ class LtiToolLaunchView(LtiToolBaseView):
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Validate if LTI tool has access to course.
-        course_access_config = CourseAccessConfiguration.objects.filter(
-            lti_tool=self.tool_config.get_lti_tool(
-                launch_data.get('iss'),
-                launch_data.get('azp'),
-            ),
-        ).first()
+        if COURSE_ACCESS_CONFIGURATION.is_enabled():
+            course_access_config = CourseAccessConfiguration.objects.filter(
+                lti_tool=self.tool_config.get_lti_tool(
+                    launch_data.get('iss'),
+                    launch_data.get('azp'),
+                ),
+            ).first()
 
-        if not course_access_config:
-            log.error('LTI 1.3: Course access configuration not found.')
-            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+            if not course_access_config:
+                log.error('LTI 1.3: Course access configuration not found.')
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        if not course_access_config.is_course_id_allowed(course_id):
-            log.error('LTI 1.3: Course ID %s is not allowed.', course_id)
-            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+            if not course_access_config.is_course_id_allowed(course_id):
+                log.error('LTI 1.3: Course ID %s is not allowed.', course_id)
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Authenticate and login LTI profile user.
         edx_user = self.authenticate_and_login(
@@ -270,6 +272,10 @@ class LtiToolLaunchView(LtiToolBaseView):
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         if not usage_key_string:
+            if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
+                log.error('LTI 1.3: Complete course launches are not enabled.')
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
             return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
 
         usage_key = UsageKey.from_string(usage_key_string)
