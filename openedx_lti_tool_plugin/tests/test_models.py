@@ -362,7 +362,7 @@ class TestLtiGradedResource(LtiProfileMixin, TestCase):
         grade_mock().set_activity_progress.assert_called_once_with('Submitted')
         grade_mock().set_grading_progress.assert_called_once_with('FullyGraded')
         grade_mock().set_user_id.assert_called_once_with(self.profile.subject_id)
-        message_launch_mock().put_grade.asser_called_once_with(grade_mock().set_user_id())
+        message_launch_mock().get_ags().put_grade.asser_called_once_with(grade_mock().set_user_id())
 
     def test_str_method(self):
         """Test __str__ method return value."""

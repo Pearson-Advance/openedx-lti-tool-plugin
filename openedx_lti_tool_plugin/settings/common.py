@@ -67,6 +67,7 @@ def plugin_settings(settings: LazySettings):
     settings.MIDDLEWARE.append('openedx_lti_tool_plugin.middleware.LtiViewPermissionMiddleware')
 
     # Backends settings
+    settings.OLTITP_CORE_SIGNALS_BACKEND = f'{BACKENDS_MODULE_PATH}.core_signals_module_o_v1'
     settings.OLTITP_COURSE_EXPERIENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.course_experience_module_o_v1'
     settings.OLTITP_COURSEWARE_BACKEND = f'{BACKENDS_MODULE_PATH}.courseware_module_o_v1'
     settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.learning_sequences_module_o_v1'

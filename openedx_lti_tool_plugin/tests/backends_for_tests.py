@@ -2,6 +2,11 @@
 from unittest.mock import Mock
 
 
+def course_grade_changed_backend():
+    """Return COURSE_GRADE_CHANGED mock function."""
+    return Mock()
+
+
 def get_course_outline_block_tree_backend(*args: tuple, **kwargs: dict):
     """Return get_course_outline_block_tree mock function.
 
