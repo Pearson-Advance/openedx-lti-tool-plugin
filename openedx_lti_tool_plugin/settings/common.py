@@ -50,6 +50,7 @@ OLTITP_URL_WHITELIST = [
     r'^/segmentio/event/?.*$',
     r'^/event/?.*$',
 ]
+OLTITP_URL_WHITELIST_EXTRA = []
 
 
 def plugin_settings(settings: LazySettings):
@@ -61,6 +62,7 @@ def plugin_settings(settings: LazySettings):
     """
     settings.OLTITP_ENABLE_LTI_TOOL = False
     settings.OLTITP_URL_WHITELIST = OLTITP_URL_WHITELIST
+    settings.OLTITP_URL_WHITELIST_EXTRA = []
     settings.AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')
     settings.MIDDLEWARE.append('openedx_lti_tool_plugin.middleware.LtiViewPermissionMiddleware')
 

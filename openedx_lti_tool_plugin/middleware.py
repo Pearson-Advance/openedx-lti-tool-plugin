@@ -1,4 +1,5 @@
 """Middleware for openedx_lti_tool_plugin."""
+import logging
 import re
 from typing import Any
 
@@ -9,6 +10,8 @@ from django.http import HttpResponse
 from django.http.request import HttpRequest
 
 from openedx_lti_tool_plugin.models import LtiProfile
+
+log = logging.getLogger(__name__)
 
 
 class LtiViewPermissionMiddleware:
@@ -56,11 +59,15 @@ class LtiViewPermissionMiddleware:
             *args: Variable length argument list.
         """
         # Allow the view if no LtiProfile is found.
-        # Allow all patterns from OLTITP_URL_WHITELIST setting.
+        # Allow all patterns from OLTITP_URL_WHITELIST and OLTITP_URL_WHITELIST_EXTRA setting.
         if (
             not LtiProfile.objects.filter(user=request.user.id).exists()
-            or any(re.match(regex, request.path) for regex in settings.OLTITP_URL_WHITELIST)
+            or any(
+                re.match(regex, request.path)
+                for regex in [*settings.OLTITP_URL_WHITELIST, *settings.OLTITP_URL_WHITELIST_EXTRA]
+            )
         ):
             return None
 
+        log.error('LTI Middleware: User %s path request blocked: %s', request.user, request.path)
         return logout(request)
