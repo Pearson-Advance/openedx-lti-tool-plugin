@@ -16,6 +16,20 @@ Unreleased
 
 *
 
+0.0.4 - 2023-08-28
+********************
+
+Added
+=====
+
+- Added OLTITP_URL_WHITELIST_EXTRA setting.
+- Added LTI view permission middleware log logout message.
+
+Changed
+=======
+
+- Modified LTI view permission middleware to use OLTITP_URL_WHITELIST_EXTRA setting.
+
 0.0.3 - 2023-08-21
 ********************
 
@@ -77,8 +91,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.3...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.4
 [0.0.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.3
 [0.0.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.2
 [0.0.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.1
-
