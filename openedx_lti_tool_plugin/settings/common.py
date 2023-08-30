@@ -36,8 +36,9 @@ BACKENDS_MODULE_PATH = 'openedx_lti_tool_plugin.edxapp_wrapper.backends'
 OLTITP_URL_WHITELIST = [
     # This app URLs.
     fr'^/{AppConfig.name}/?.*$',
-    # Favicon icon URL.
+    # Asset URLs.
     r'^/favicon.ico$',
+    r'^/theming/asset/?.*$',
     # Debug URLs.
     r'^/__debug__/?.*$',
     # XBlock handler URLs.
@@ -73,4 +74,5 @@ def plugin_settings(settings: LazySettings):
     settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.learning_sequences_module_o_v1'
     settings.OLTITP_MODULESTORE_BACKEND = f'{BACKENDS_MODULE_PATH}.modulestore_module_o_v1'
     settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{BACKENDS_MODULE_PATH}.safe_sessions_module_o_v1'
+    settings.OLTITP_SITE_CONFIGURATION_BACKEND = f'{BACKENDS_MODULE_PATH}.site_configuration_module_o_v1'
     settings.OLTITP_STUDENT_BACKEND = f'{BACKENDS_MODULE_PATH}.student_module_o_v1'

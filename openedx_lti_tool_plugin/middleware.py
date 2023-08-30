@@ -9,6 +9,7 @@ from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse
 from django.http.request import HttpRequest
 
+from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.models import LtiProfile
 
 log = logging.getLogger(__name__)
@@ -62,10 +63,16 @@ class LtiViewPermissionMiddleware:
         # Allow all patterns from OLTITP_URL_WHITELIST and OLTITP_URL_WHITELIST_EXTRA setting.
         if (
             not LtiProfile.objects.filter(user=request.user.id).exists()
-            or any(
-                re.match(regex, request.path)
-                for regex in [*settings.OLTITP_URL_WHITELIST, *settings.OLTITP_URL_WHITELIST_EXTRA]
-            )
+            or any(re.match(regex, request.path) for regex in [
+                *configuration_helpers().get_value(
+                    'OLTITP_URL_WHITELIST',
+                    settings.OLTITP_URL_WHITELIST,
+                ),
+                *configuration_helpers().get_value(
+                    'OLTITP_URL_WHITELIST_EXTRA',
+                    settings.OLTITP_URL_WHITELIST_EXTRA,
+                ),
+            ])
         ):
             return None
 
