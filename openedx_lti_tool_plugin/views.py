@@ -29,13 +29,15 @@ from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblo
 from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
 from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_user_change_as_expected
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile, UserT
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
 from openedx_lti_tool_plugin.utils import get_course_outline
 from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
 
 log = logging.getLogger(__name__)
 
 _ViewF = TypeVar('_ViewF', bound=Callable[..., Any])
+AGS_CLAIM_ENDPOINT = 'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint'
+AGS_SCORE_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/score'
 
 
 def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
@@ -180,7 +182,6 @@ class LtiToolLaunchView(LtiToolBaseView):
         Returns:
             LTI profile Open edX user instance or None.
         """
-        LtiProfile.objects.get_or_create_from_claims(iss=iss, aud=aud, sub=sub)
         edx_user = authenticate(request, iss=iss, aud=aud, sub=sub)
 
         if not edx_user:  # Return None if user is not found.
@@ -235,13 +236,15 @@ class LtiToolLaunchView(LtiToolBaseView):
             log.error('LTI 1.3: Launch message validation failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
+        # Get identity claims.
+        iss = launch_data.get('iss')
+        aud = launch_data.get('aud')
+        sub = launch_data.get('sub')
+
         # Validate if LTI tool has access to course.
         if COURSE_ACCESS_CONFIGURATION.is_enabled():
             course_access_config = CourseAccessConfiguration.objects.filter(
-                lti_tool=self.tool_config.get_lti_tool(
-                    launch_data.get('iss'),
-                    launch_data.get('azp'),
-                ),
+                lti_tool=self.tool_config.get_lti_tool(iss, launch_data.get('azp')),
             ).first()
 
             if not course_access_config:
@@ -253,12 +256,8 @@ class LtiToolLaunchView(LtiToolBaseView):
                 return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
         # Authenticate and login LTI profile user.
-        edx_user = self.authenticate_and_login(
-            request,
-            launch_data.get('iss'),
-            launch_data.get('aud'),
-            launch_data.get('sub'),
-        )
+        lti_profile, _ = LtiProfile.objects.get_or_create_from_claims(iss=iss, aud=aud, sub=sub)
+        edx_user = self.authenticate_and_login(request, iss, aud, sub)
 
         if not edx_user:
             log.error('LTI 1.3: Profile authentication failed.')
@@ -271,24 +270,50 @@ class LtiToolLaunchView(LtiToolBaseView):
             log.error('LTI 1.3: Course enrollment failed: %s', exc)
             return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
+        # Validate and generate course launch response.
         if not usage_key_string:
             if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
                 log.error('LTI 1.3: Complete course launches are not enabled.')
                 return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-            return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
+            context_key = course_id
+            response = redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
 
-        usage_key = UsageKey.from_string(usage_key_string)
+        # Validate and generate unit/component launch response.
+        else:
+            usage_key = UsageKey.from_string(usage_key_string)
 
-        if str(usage_key.course_key) != course_id:
-            log.error('LTI 1.3: Unit/component does not belong to course.')
-            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+            if str(usage_key.course_key) != course_id:
+                log.error('LTI 1.3: Unit/component does not belong to course.')
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        if usage_key.block_type in ['chapter', 'sequential']:
-            log.error('LTI 1.3: Invalid xblock type: %s', usage_key.block_type)
-            return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+            if usage_key.block_type in ['chapter', 'sequential']:
+                log.error('LTI 1.3: Invalid xblock type: %s', usage_key.block_type)
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
 
-        return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
+            context_key = usage_key_string
+            response = redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
+
+        # Handle AGS claims.
+        if launch_message.has_ags():
+            ags_endpoint = launch_data.get(AGS_CLAIM_ENDPOINT, {})
+            lineitem = ags_endpoint.get('lineitem')
+
+            if not lineitem:
+                log.error('LTI AGS: Missing AGS lineitem.')
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+            if AGS_SCORE_SCOPE not in ags_endpoint.get('scope', []):
+                log.error('LTI AGS: Missing required AGS scope: %s', AGS_SCORE_SCOPE)
+                return HttpResponseBadRequest(self.BAD_RESPONSE_MESSAGE)
+
+            LtiGradedResource.objects.get_or_create(
+                lti_profile=lti_profile,
+                context_key=context_key,
+                lineitem=lineitem,
+            )
+
+        return response
 
 
 class LtiToolJwksView(LtiToolBaseView):
