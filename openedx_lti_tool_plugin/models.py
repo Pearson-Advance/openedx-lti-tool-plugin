@@ -290,7 +290,8 @@ class LtiGradedResource(models.Model):
         })
         launch_message.set_restored()
         launch_message.validate_registration()
-        launch_message.get_ags()
+        # Get AGS service object.
+        ags = launch_message.get_ags()
         # Create grade object and set grade values.
         grade = Grade()
         grade.set_score_given(given_score)
@@ -300,7 +301,7 @@ class LtiGradedResource(models.Model):
         grade.set_grading_progress('FullyGraded')
         grade.set_user_id(self.lti_profile.subject_id)
         # Send grade update.
-        launch_message.put_grade(grade)  # pylint: disable=no-member
+        ags.put_grade(grade)
 
     def __str__(self) -> str:
         """Get a string representation of this model instance."""

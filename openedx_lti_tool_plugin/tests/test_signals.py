@@ -1,12 +1,12 @@
 """Tests for the openedx_lti_tool_plugin signals module."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from django.db.models import signals
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration
-from openedx_lti_tool_plugin.signals import create_course_access_configuration
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource
+from openedx_lti_tool_plugin.signals import MAX_SCORE, create_course_access_configuration, update_course_score
 
 
 class TestCreateCourseAccessConfiguration(TestCase):
@@ -45,3 +45,130 @@ class TestCreateCourseAccessConfiguration(TestCase):
         create_course_access_configuration(LtiTool, self.lti_tool, created=False)
 
         get_or_create_mock.assert_not_called()
+
+
+class TestUpdateCourseScore(TestCase):
+    """Test update_course_score signal."""
+
+    def setUp(self):
+        """Test fixtures setup."""
+        self.user = MagicMock(
+            id='random-user-id',
+            openedx_lti_tool_plugin_lti_profile='random-lti-profile',
+        )
+        self.course_grade = MagicMock(passed=True, percent=1.0)
+        self.course_key = MagicMock()
+        self.graded_resource = MagicMock()
+
+    @patch('openedx_lti_tool_plugin.signals.datetime')
+    @patch('openedx_lti_tool_plugin.signals.timezone')
+    @patch.object(LtiGradedResource.objects, 'all_from_user_id')
+    @patch('openedx_lti_tool_plugin.signals.getattr')
+    @patch('openedx_lti_tool_plugin.signals.settings')
+    def test_update_score(
+        self,
+        settings_mock: MagicMock,
+        getattr_mock: MagicMock,
+        all_from_user_id_mock: MagicMock,
+        timezone_mock: MagicMock,
+        datetime_mock: MagicMock,
+    ):
+        """Test signal when AGS score is updated.
+
+        Args:
+            settings_mock: Mocked settings function.
+            getattr_mock: Mocked getattr function.
+            all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
+            timezone_mock: Mocked timezone function.
+            datetime_mock: Mocked datetime function.
+        """
+        getattr_mock.side_effect = [True, self.user.openedx_lti_tool_plugin_lti_profile]
+        all_from_user_id_mock.return_value = [self.graded_resource]
+
+        self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
+        getattr_mock.assert_has_calls([
+            call(settings_mock, 'OLTITP_ENABLE_LTI_TOOL', False),
+            call(self.user, 'openedx_lti_tool_plugin_lti_profile', None),
+        ])
+        all_from_user_id_mock.assert_called_once_with(user_id=self.user.id, context_key=self.course_key)
+        datetime_mock.now.assert_called_once_with(tz=timezone_mock.utc)
+        self.graded_resource.update_score.assert_called_once_with(
+            self.course_grade.percent, MAX_SCORE, datetime_mock.now(),
+        )
+
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    @patch('openedx_lti_tool_plugin.signals.datetime')
+    @patch.object(LtiGradedResource.objects, 'all_from_user_id')
+    def test_plugin_disable(
+        self,
+        all_from_user_id_mock: MagicMock,
+        datetime_mock: MagicMock,
+    ):
+        """Test signal when plugin is disabled.
+
+        Args:
+            all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
+            datetime_mock: Mocked datetime function.
+        """
+        self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
+        all_from_user_id_mock.assert_not_called()
+        datetime_mock.now.assert_not_called()
+        self.graded_resource.update_score.assert_not_called()
+
+    @patch('openedx_lti_tool_plugin.signals.datetime')
+    @patch.object(LtiGradedResource.objects, 'all_from_user_id')
+    def test_without_lti_profile(
+        self,
+        all_from_user_id_mock: MagicMock,
+        datetime_mock: MagicMock,
+    ):
+        """Test signal when user has no LTI profile.
+
+        Args:
+            all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
+            datetime_mock: Mocked datetime function.
+        """
+        self.user.openedx_lti_tool_plugin_lti_profile = None
+
+        self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
+        all_from_user_id_mock.assert_not_called()
+        datetime_mock.now.assert_not_called()
+        self.graded_resource.update_score.assert_not_called()
+
+    @patch('openedx_lti_tool_plugin.signals.datetime')
+    @patch.object(LtiGradedResource.objects, 'all_from_user_id')
+    def test_without_course_grade_passed(
+        self,
+        all_from_user_id_mock: MagicMock,
+        datetime_mock: MagicMock,
+    ):
+        """Test signal without course grade passed.
+
+        Args:
+            all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
+            datetime_mock: Mocked datetime function.
+        """
+        self.course_grade.passed = False
+
+        self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
+        all_from_user_id_mock.assert_not_called()
+        datetime_mock.now.assert_not_called()
+        self.graded_resource.update_score.assert_not_called()
+
+    @patch('openedx_lti_tool_plugin.signals.datetime')
+    @patch.object(LtiGradedResource.objects, 'all_from_user_id', return_value=[])
+    def test_without_graded_resources(
+        self,
+        all_from_user_id_mock: MagicMock,
+        datetime_mock: MagicMock,
+    ):
+        """Test signal without LTI graded resources.
+
+        Args:
+            all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
+            datetime_mock: Mocked datetime function.
+        """
+        self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
+        all_from_user_id_mock.assert_called_once_with(user_id=self.user.id, context_key=self.course_key)
+        datetime_mock.now.assert_not_called()
+        self.graded_resource.update_score.assert_not_called()
