@@ -1,7 +1,8 @@
 """Tests for the openedx_lti_tool_plugin middleware module."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from ddt import data, ddt
+from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.test import RequestFactory, TestCase, override_settings
 from testfixtures import log_capture
@@ -31,8 +32,9 @@ class TestLtiViewPermissionMiddleware(TestCase):
             self.middleware_class(None)(self.request)
 
     @log_capture()
-    @override_settings(OLTITP_URL_WHITELIST_EXTRA=[r'^/test$'])
     @data(
+        '/favicon.ico',
+        '/theming/asset/test',
         '/courses/test/xblock/test/handler/test',
         '/courses/test/xblock/test/handler_noauth/test',
         '/xblock/resource/test',
@@ -43,9 +45,11 @@ class TestLtiViewPermissionMiddleware(TestCase):
     )
     @patch('openedx_lti_tool_plugin.middleware.logout')
     @patch.object(LtiProfile.objects, 'filter')
+    @patch('openedx_lti_tool_plugin.middleware.configuration_helpers')
     def test_process_view_with_whitelisted_url(
         self,
         request_url: str,
+        configuration_helpers_mock: MagicMock,
         filter_mock: MagicMock,
         logout_mock: MagicMock,
         log: LogCaptureForDecorator
@@ -53,17 +57,22 @@ class TestLtiViewPermissionMiddleware(TestCase):
         """Test process_view method with whitelisted URL.
 
         Args:
-            module_path: Fake edx module path.
             request_url: Request URL string.
+            configuration_helpers_mock: Mocked configuration_helpers function.
             filter_mock: Mocked LtiProfile.objects filter method.
             logout_mock: Mocked logout function.
             log: LogCapture fixture.
         """
+        configuration_helpers_mock.return_value.get_value.return_value = [*settings.OLTITP_URL_WHITELIST, r'^/test$']
         request = self.factory.get(request_url)
         request.user = self.user
 
         self.middleware_class(None).process_view(request, None)
 
+        configuration_helpers_mock().get_value.assert_has_calls([
+            call('OLTITP_URL_WHITELIST', settings.OLTITP_URL_WHITELIST),
+            call('OLTITP_URL_WHITELIST_EXTRA', settings.OLTITP_URL_WHITELIST_EXTRA),
+        ])
         filter_mock.assert_called_once_with(user=self.user.id)
         filter_mock().exists.assert_called_once_with()
         log.check()
@@ -72,8 +81,10 @@ class TestLtiViewPermissionMiddleware(TestCase):
     @log_capture()
     @patch('openedx_lti_tool_plugin.middleware.logout')
     @patch.object(LtiProfile.objects, 'filter')
+    @patch('openedx_lti_tool_plugin.middleware.configuration_helpers')
     def test_process_view_without_whitelisted_edx_url(
         self,
+        configuration_helpers_mock: MagicMock,
         filter_mock: MagicMock,
         logout_mock: MagicMock,
         log: LogCaptureForDecorator,
@@ -81,11 +92,12 @@ class TestLtiViewPermissionMiddleware(TestCase):
         """Test process_view method without whitelisted edx-platform URL.
 
         Args:
-            module_path: Fake edx module path.
+            configuration_helpers_mock: Mocked configuration_helpers function.
             filter_mock: Mocked LtiProfile.objects filter method.
             logout_mock: Mocked logout function.
             log: LogCapture fixture.
         """
+        configuration_helpers_mock.return_value.get_value.return_value = []
         self.middleware_class(None).process_view(self.request, None)
 
         filter_mock.assert_called_once_with(user=self.user.id)
