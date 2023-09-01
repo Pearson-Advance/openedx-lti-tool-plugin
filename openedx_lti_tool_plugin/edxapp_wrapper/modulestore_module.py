@@ -9,3 +9,10 @@ def item_not_found_error():
     return import_module(
         settings.OLTITP_MODULESTORE_BACKEND,
     ).item_not_found_error_backend()
+
+
+def modulestore():
+    """Return modulestore function."""
+    return import_module(
+        settings.OLTITP_MODULESTORE_BACKEND,
+    ).modulestore()
