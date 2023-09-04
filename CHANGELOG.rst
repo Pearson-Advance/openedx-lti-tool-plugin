@@ -16,6 +16,21 @@ Unreleased
 
 *
 
+0.0.5 - 2023-09-04
+********************
+
+Added
+=====
+
+- Add AGS LtiGradedResource model.
+
+Changed
+=======
+
+- Modify LtiToolLaunchView to create LtiGradedResource on AGS request.
+- Add site configuration compatibility to OLTITP_URL_WHITELIST and OLTITP_URL_WHITELIST_EXTRA setting.
+- Fix get_course_outline filtering of unpublished units.
+
 0.0.4 - 2023-08-28
 ********************
 
@@ -91,7 +106,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.4...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.5
 [0.0.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.4
 [0.0.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.3
 [0.0.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.2
