@@ -196,12 +196,12 @@ class TestCourseAccessConfiguration(TestCase):
 
     @patch('openedx_lti_tool_plugin.models._', return_value='')
     @patch('openedx_lti_tool_plugin.models.json.loads', side_effect=ValueError())
-    def test_clean_with_invalid_allowed_course_ids(
+    def test_clean_with_invalid_json_allowed_course_ids(
         self,
         json_loads_mock: MagicMock,
         gettext_mock: MagicMock,
     ):
-        """Test clean method with invalid allowed_course_ids field.
+        """Test clean method with invalid JSON on allowed_course_ids field.
 
         Args:
             json_loads_mock: Mocked json.loads function.
@@ -213,6 +213,32 @@ class TestCourseAccessConfiguration(TestCase):
             self.access_configuration.clean()
 
         json_loads_mock.assert_called_once_with('invalid-allowed-course-ids')
+        gettext_mock.assert_called_once_with(f'Should be a list. {self.access_configuration.EXAMPLE_ID_LIST}')
+        self.assertEqual(str(cm.exception), "{'allowed_course_ids': ['']}")
+
+    @patch('openedx_lti_tool_plugin.models._', return_value='')
+    @patch('openedx_lti_tool_plugin.models.isinstance', return_value=False)
+    @patch('openedx_lti_tool_plugin.models.json.loads')
+    def test_clean_with_invalid_instance_allowed_course_ids(
+        self,
+        json_loads_mock: MagicMock,
+        isinstance_mock: MagicMock,
+        gettext_mock: MagicMock,
+    ):
+        """Test clean method with invalid instance on allowed_course_ids field.
+
+        Args:
+            json_loads_mock: Mocked json.loads function.
+            isinstance_mock: Mocked isinstance function.
+            gettext_mock: Mocked gettext function.
+        """
+        self.access_configuration.allowed_course_ids = '{"test": "test"}'
+
+        with self.assertRaises(ValidationError) as cm:
+            self.access_configuration.clean()
+
+        json_loads_mock.assert_called_once_with('{"test": "test"}')
+        isinstance_mock.assert_called_once_with(json_loads_mock(), list)
         gettext_mock.assert_called_once_with(f'Should be a list. {self.access_configuration.EXAMPLE_ID_LIST}')
         self.assertEqual(str(cm.exception), "{'allowed_course_ids': ['']}")
 

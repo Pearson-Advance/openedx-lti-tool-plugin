@@ -172,7 +172,9 @@ class CourseAccessConfiguration(models.Model):
         """
         try:
             allowed_course_ids = json.loads(self.allowed_course_ids)
-            isinstance(allowed_course_ids, list)
+
+            if not isinstance(allowed_course_ids, list):
+                raise ValueError()
         except ValueError as exc:
             raise ValidationError({
                 'allowed_course_ids': _(f'Should be a list. {self.EXAMPLE_ID_LIST}'),
