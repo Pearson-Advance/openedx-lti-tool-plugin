@@ -1,6 +1,6 @@
-###############################################
-PADV-683: Create LTI profile user with PII data
-###############################################
+#########################################
+PADV-683: Use PII data on the LTI profile
+#########################################
 
 ######
 Status
@@ -13,24 +13,24 @@ Discovery
 #########
 
 Currently, the LTI tool plugin doesn't make use of PII data, we should have
-a mechanism that could use PII data (email, name) to store it so we can have
-a track of the user executing the LTI launch, we could also have a mechanism
-that could use PII data (email, name) to log in to an existing user on the
-LMS. This will require to modify the current mechanism that handles the
-retrieval of the LTI profile user so it's able to use PII data to authenticate
-and relate it to an LTI profile, we need to create a discovery in which we
-analyze the security risks of allowing such behavior and possible approaches
-to create this feature.
+a mechanism that could use PII data to store it so we can have a track of the
+user executing the LTI launch, and use it to personalize the Open edX profile
+information, we could also have a mechanism that could use PII data to log in
+to an existing user on the LMS. This will require to modify the current
+mechanism that handles the retrieval of the LTI profile user so it's able to
+use PII data to authenticate and relate it to an LTI profile, we need to create
+a discovery in which we analyze the security risks of allowing such behavior
+and possible approaches to create this feature.
 
 ########
 Approach
 ########
 
-***********************
-PII data on LTI profile
-***********************
+****************************
+Save PII data on LTI profile
+****************************
 
-We could save PII data (email, name) on the LTI profile, this will allow
+We could save PII data on the LTI profile, this will allow
 us to keep track of the identity (apart from the iss, aud, and sub claims)
 of the user executing the LTI launch. Currently the LTI profile fields
 represent a unique identity of a user executing a launch, being the sub
@@ -39,25 +39,27 @@ represent a unique identity of a user executing a launch, being the sub
 LTI profile modifications
 =========================
 
-- Add a email and name field to the LTI profile model:
+- Add a pii_data JSON field to the LTI profile model:
 
-    email = models.CharField(
+    pii_data = models.JSONField(
         max_length=255,
-        blank=True,
-        verbose_name=_('Email'),
-        help_text=_('Profile email.'),
-    )
-    name = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name=_('Name'),
-        help_text=_('Profile name.'),
+        default={},
+        verbose_name=_('PII Data'),
+        help_text=_('JSON with user PII data.'),
     )
 
-- Modify the get_or_create_from_claims method to receive an optional name and
-  email parameter, if the LTI profile is being created the PII data is used.
+- Modify the get_or_create_from_claims method to receive an optional pii_data
+  parameter, if the LTI profile is being created the PII data is used.
 
-    def get_or_create_from_claims(self, iss, aud, sub, email=None, name=None):
+    pii_data = {
+      'email': launch_data.get('email'),
+      'name': launch_data.get('name'),
+      'given_name': launch_data.get('given_name'),
+      'family_name': launch_data.get('family_name'),
+      'locale': launch_data.get('locale'),
+    }
+
+    def get_or_create_from_claims(self, iss, aud, sub, pii_data={}):
         try:
           return self.get_from_claims(iss=iss, aud=aud, sub=sub), False
       except self.model.DoesNotExist:
@@ -65,65 +67,66 @@ LTI profile modifications
             platform_id=iss,
             client_id=aud,
             subject_id=sub,
-            email=email,
-            name=name,
+            pii_data=pii_data,
           ), True
 
-- Modify the save method to allow it use the name field on the user creation.
+LTI launch view modifications
+=============================
+
+- Create a function that will receive a dict with PII data, the function will
+  verify if the PII data changed, if the PII data changed, update the LTI
+  profile with the new PII data:
+
+    def update_pii_data(pii_data: dict, lti_profile: LtiProfile):
+        if pii_data and pii_data != lti_profile.pii_data:
+          lti_profile.pii_data = pii_data
+          lti_profile.save()
+
+********************************
+Use PII data on LTI profile user
+********************************
+
+We could use the PII data stored on the LTI profile to save it in the LTI
+profile related user and the related user Open edX profile.
+
+LTI profile modifications
+=========================
+
+- Modify the save method to allow it to use the PII data on the user creation.
 
     def save(self, *args: tuple, **kwargs: dict):
         ...
-
         with transaction.atomic():
             # Create edx user.
             self.user = get_user_model().objects.create(
                 username=f'{app_config.name}.{self.uuid}',
                 email=f'{self.uuid}@{app_config.name}',
+                first_name=self.pii_data.get('given_name'),
+                last_name=self.pii_data.get('family_name'),
             )
             self.user.set_unusable_password()  # LTI users can only auth through LTI launches.
             self.user.save()
 
             # Create edx user profile.
-            profile = user_profile()(user=self.user, name=self.name)
+            profile = user_profile()(user=self.user, name=self.pii_data.get('name'))
             profile.save()
 
             return super().save(*args, **kwargs)
-
-LTI launch view modifications
-=============================
-
-- We will retrieve the PII data and send it to the get_or_create_from_claims
-method of the LTI profile, if the LTI profile is being created the PII data
-will be used on the model.
-
-- Create a function that will receive a dict with PII data, the function will
-verify if the PII value requested for update exists and has changed, if so
-then we will update it and save the LTI profile.
-
-    def update_pii_data(pii_data: dict, lti_profile: LtiProfile):
-        update_fields = []
-
-        for field, value in pii_data.items():
-          if value and value != getattr(lti_profile, field, ''):
-            setattr(lti_profile, field, value)
-            update_fields.append(field)
-
-        lti_profile.save(update_fields=update_fields)
-
-    email = launch_data.get('email')
-    name = launch_data.get('name')
-    update_pii_data({'email': email, 'name': name}, lti_profile)
 
 LTI profile post-save signal
 ============================
 
 - Create a post-save signal on the LTI profile that will check if the PII data
-  changed, if the PII data changed, update the name of the LTIP profile user
-  and user profile.
+  changed, if the PII data changed, update the data of the LTIP profile user
+  and user profile using the PII data.
 
 **********************************
 User authentication using PII data
 **********************************
+
+We could use the email received on the PII data to allow the creation of LTI
+profiles with users related to the requested email instead of the
+auto-generated LTI profile user.
 
 PII user authentication permission
 ==================================
