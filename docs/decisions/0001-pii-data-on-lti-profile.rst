@@ -273,4 +273,5 @@ LTI profile with the requested user email.
 References
 ##########
 
-- LTI 1.3 Content Libraries LTI profile subject_url method: https://github.com/openedx/edx-platform/pull/27411/files#diff-36022deef8607c7a4647c8f2620b4d9ed283d5b41077e966bfd097585e0ebe7cR361
+1. LTI 1.3 User Identity claims: https://www.imsglobal.org/spec/lti/v1p3#user-identity-claims
+2. LTI 1.3 Content Libraries LTI profile subject_url method: https://github.com/openedx/edx-platform/pull/27411/files#diff-36022deef8607c7a4647c8f2620b4d9ed283d5b41077e966bfd097585e0ebe7cR361
