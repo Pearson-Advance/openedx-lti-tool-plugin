@@ -77,6 +77,17 @@ LTI launch view modifications
   verify if the PII data changed, if the PII data changed, update the LTI
   profile with the new PII data:
 
+    def update_pii_data(pii_data, lti_profile):
+        updated_pii_data = {**lti_profile.pii_data}
+
+        for field, value in pii_data.items():
+            if value != current_pii_data.get(field):
+                updated_pii_data.update({field: value})
+
+        if updated_pii_data != lti_profile.pii_data:
+          lti_profile.pii_data = updated_pii_data
+          lti_profile.save()
+
 ********************************
 Use PII data on LTI profile user
 ********************************
