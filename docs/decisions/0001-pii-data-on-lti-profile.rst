@@ -42,7 +42,6 @@ LTI profile modifications
 - Add a pii_data JSON field to the LTI profile model:
 
     pii_data = models.JSONField(
-        max_length=255,
         default={},
         verbose_name=_('PII Data'),
         help_text=_('JSON with user PII data.'),
