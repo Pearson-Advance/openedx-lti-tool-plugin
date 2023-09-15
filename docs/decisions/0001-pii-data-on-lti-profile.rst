@@ -39,12 +39,16 @@ represent a unique identity of a user executing a launch, being the sub
 LTI profile modifications
 =========================
 
+- Create a JSON schema validator to validate the pii_field data. This validator
+  will check that any known PII fields are of the correct type and structure
+  (Example: email field in PII data is a correct email address).
 - Add a pii_data JSON field to the LTI profile model:
 
     pii_data = models.JSONField(
         default={},
         verbose_name=_('PII Data'),
         help_text=_('JSON with user PII data.'),
+        validators=[pii_data_schema_validator],
     )
 
 - Modify the get_or_create_from_claims method to receive an optional pii_data
@@ -128,6 +132,8 @@ LTI profile post-save signal
 **********************************
 User authentication using PII data
 **********************************
+
+NOTE: THIS IMPLEMENTATION IS STILL A WORK IN PROGRESS.
 
 We could use the email received on the PII data to allow the creation of LTI
 profiles with users related to the requested email instead of the
@@ -273,4 +279,5 @@ References
 ##########
 
 1. LTI 1.3 User Identity claims: https://www.imsglobal.org/spec/lti/v1p3#user-identity-claims
-2. LTI 1.3 Content Libraries LTI profile subject_url method: https://github.com/openedx/edx-platform/pull/27411/files#diff-36022deef8607c7a4647c8f2620b4d9ed283d5b41077e966bfd097585e0ebe7cR361
+2. JSON Schema Documentation: https://python-jsonschema.readthedocs.io/en/stable/
+3. LTI 1.3 Content Libraries LTI profile subject_url method: https://github.com/openedx/edx-platform/pull/27411/files#diff-36022deef8607c7a4647c8f2620b4d9ed283d5b41077e966bfd097585e0ebe7cR361
