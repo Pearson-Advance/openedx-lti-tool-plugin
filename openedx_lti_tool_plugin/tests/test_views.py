@@ -9,8 +9,6 @@ from django.urls import reverse
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
-from testfixtures import log_capture
-from testfixtures.logcapture import LogCaptureForDecorator
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as App
 from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
@@ -122,6 +120,7 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         super().setUp()
         self.url = reverse('lti1p3-login')
         self.view_class = LtiToolLoginView
+        self.error_message = 'LTI 1.3: OIDC login failed: '
 
     @patch.object(LtiToolLoginView, 'post')
     def test_get_redirects_to_post(self, post_mock: MagicMock):
@@ -162,7 +161,8 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         login_redirect_mock.assert_called_once_with(login_data.get('target_link_uri'))
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoOIDCLogin, '__init__', side_effect=LtiException)
@@ -171,7 +171,8 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         login_init_mock: MagicMock,
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request raises LtiException on invalid or missing login data.
 
@@ -179,18 +180,21 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
             login_init_mock: Mocked DjangoOIDCLogin __init__ method.
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         request = self.factory.post(self.url)
         response = self.view_class.as_view()(request)
 
         login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         self.assertRaises(LtiException, login_init_mock)
-        log.check(('openedx_lti_tool_plugin.views', 'ERROR', 'LTI 1.3: OIDC login failed: '))
-        self.assertEqual(response.content.decode('utf-8'), 'Invalid LTI 1.3 login request.')
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with(self.error_message)
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
     @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
     @patch.object(DjangoOIDCLogin, '__init__', side_effect=OIDCException)
@@ -199,7 +203,8 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         login_init_mock: MagicMock,
         tool_conf_mock: MagicMock,
         tool_storage_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request raises OIDCException on invalid or missing login data.
 
@@ -207,16 +212,18 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
             login_init_mock: Mocked DjangoOIDCLogin __init__ method.
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         request = self.factory.post(self.url)
         response = self.view_class.as_view()(request)
 
         login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         self.assertRaises(OIDCException, login_init_mock)
-        log.check(('openedx_lti_tool_plugin.views', 'ERROR', 'LTI 1.3: OIDC login failed: '))
-        self.assertEqual(response.content.decode('utf-8'), 'Invalid LTI 1.3 login request.')
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with(self.error_message)
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
     @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):
@@ -314,10 +321,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
     @patch.object(LtiGradedResource.objects, 'get_or_create')
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=True)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
@@ -402,14 +406,11 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             context_key=COURSE_ID,
             lineitem='random-lineitem',
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, 'random-content')
+        self.assertEqual(response.status_code, redirect_mock().status_code)
+        self.assertEqual(response.content, redirect_mock().content)
 
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=False)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
@@ -434,7 +435,7 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
         allow_complete_course_launch_mock: MagicMock,  # pylint: disable=unused-argument
-        redirect_mock: MagicMock,  # pylint: disable=unused-argument
+        redirect_mock: MagicMock,
         has_ags_mock: MagicMock,  # pylint: disable=unused-argument
     ):
         """Test POST request with course_access_configuration switch disabled.
@@ -464,10 +465,11 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_access_configuration_filter_mock.assert_not_called()
         course_access_configuration_filter_mock().first.assert_not_called()
         course_access_configuration_filter_mock().first().is_course_id_allowed.assert_not_called()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, 'random-content')
+        self.assertEqual(response.status_code, redirect_mock().status_code)
+        self.assertEqual(response.content, redirect_mock().content)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
@@ -482,7 +484,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         get_launch_data_mock: MagicMock,
         course_access_configuration_mock: MagicMock,
         course_access_configuration_filter_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request CourseAccessConfiguration query returns None.
 
@@ -493,7 +496,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
             course_access_configuration_mock: Mocked course_access_configuration waffle switch.
             course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         course_access_configuration_mock.is_enabled.return_value = True
         course_access_configuration_filter_mock.return_value.first.return_value = None
@@ -510,17 +514,15 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             ),
         )
         course_access_configuration_filter_mock().first.assert_called_once_with()
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Course access configuration not found.',
-            ),
+        gettext_mock.assert_called_once_with(
+            f'LTI 1.3: Course access configuration for {tool_conf_mock().get_lti_tool().title} not found.',
         )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(CourseAccessConfiguration.objects, 'filter')
     @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch.object(DjangoMessageLaunch, 'get_launch_data', return_value={**BASE_LAUNCH_DATA, 'azp': AUD})
@@ -535,7 +537,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         get_launch_data_mock: MagicMock,
         course_access_configuration_mock: MagicMock,
         course_access_configuration_filter_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with unallowed course.
 
@@ -546,7 +549,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
             course_access_configuration_mock: Mocked course_access_configuration waffle switch.
             course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         course_access_configuration_mock.is_enabled.return_value = True
         course_access_configuration_filter_mock.return_value.first.\
@@ -565,17 +569,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         )
         course_access_configuration_filter_mock().first.assert_called_once_with()
         course_access_configuration_filter_mock().first().is_course_id_allowed.assert_called_once_with(COURSE_ID)
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                f'LTI 1.3: Course ID {COURSE_ID} is not allowed.',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with(f'LTI 1.3: Course ID {COURSE_ID} is not allowed.')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(
         DjangoMessageLaunch,
         'get_launch_data',
@@ -591,7 +591,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
         tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
         get_launch_data_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request raises LtiException on invalid or missing LTI launch data.
 
@@ -600,7 +601,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             tool_conf_mock: Mocked DjangoDbToolConf class.
             tool_storage_mock: Mocked DjangoCacheDataStorage class.
             get_launch_data_mock: Mocked DjangoMessageLaunch get_launch_data method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         request = self.factory.post(self.url)
         request.user = self.user
@@ -609,17 +611,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
         get_launch_data_mock.assert_called_once_with()
         self.assertRaises(LtiException, get_launch_data_mock)
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Launch message validation failed: ',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI 1.3: Launch message validation failed: ')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value=False)
     @patch.object(LtiProfile.objects, 'get_or_create_from_claims', return_value=(LTI_PROFILE, None))
     @patch.object(CourseAccessConfiguration.objects, 'filter')
@@ -636,7 +634,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_access_configuration_filter_mock: MagicMock,  # pylint: disable=unused-argument
         get_or_create_from_claims_mock: MagicMock,  # pylint: disable=unused-argument
         authenticate_and_login_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request authenticate_and_login call returns False.
 
@@ -648,7 +647,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             course_access_configuration_filter_mock: Mocked CourseAccessConfiguration.ojects filter method.
             get_or_create_from_claims_mock: Mocked LtiProfile get_or_create_from_claims method.
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         request = self.factory.post(self.url)
         request.user = self.user
@@ -656,17 +656,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID)
 
         authenticate_and_login_mock.assert_called_once_with(request, ISS, [AUD], SUB)
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Profile authentication failed.',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI 1.3: Profile authentication failed.')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch('openedx_lti_tool_plugin.views.course_enrollment_exception', return_value=Exception)
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
@@ -689,7 +685,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_key_mock: MagicMock,
         enroll_mock: MagicMock,
         course_enrollment_exception_mock: MagicMock,
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request enroll call raises exception.
 
@@ -704,7 +701,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             course_key_mock: Mocked CourseKey from_string method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             course_enrollment_exception_mock: Mocked course_enrollment_exception function.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         enroll_mock.side_effect = course_enrollment_exception_mock.return_value
         request = self.factory.post(self.url)
@@ -715,17 +713,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, 'random-user', 'random-course-key')
         course_enrollment_exception_mock.assert_called_once_with()
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Course enrollment failed: ',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI 1.3: Course enrollment failed: ')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch('openedx_lti_tool_plugin.views.COURSE_ACCESS_CONFIGURATION')
     @patch.object(LtiToolLaunchView, 'enroll')
@@ -746,7 +740,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
         course_access_configuration_mock: MagicMock,
         allow_complete_course_launch_mock: MagicMock,
-        log,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with correct Course ID and Usage Key.
 
@@ -759,7 +754,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             allow_complete_course_launch_mock: Mocked allow_complete_course_launch waffle switch.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         course_access_configuration_mock.is_enabled.return_value = False
         allow_complete_course_launch_mock.is_enabled.return_value = False
@@ -769,21 +765,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID)
 
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Complete course launches are not enabled.',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI 1.3: Complete course launches are not enabled.')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=False)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
     @patch.object(LtiProfile.objects, 'get_or_create_from_claims', return_value=(LTI_PROFILE, None))
@@ -833,14 +821,11 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
         usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
         redirect_mock.assert_called_once_with(f'{App.name}:lti-xblock', USAGE_KEY)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, 'random-content')
+        self.assertEqual(response.status_code, redirect_mock().status_code)
+        self.assertEqual(response.content, redirect_mock().content)
 
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=False)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
@@ -887,10 +872,11 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
 
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
         redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, 'random-content')
+        self.assertEqual(response.status_code, redirect_mock().status_code)
+        self.assertEqual(response.content, redirect_mock().content)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=False)
     @patch.object(LtiToolLaunchView, 'enroll')
     @patch.object(LtiToolLaunchView, 'authenticate_and_login', return_value='random-user')
@@ -913,7 +899,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
         has_ags_mock: MagicMock,  # pylint: disable=unused-argument
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with Usage Key not associated to Course ID.
 
@@ -928,7 +915,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             has_ags_mock: Mocked DjangoMessageLaunch has_ags method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         usage_key_mock.from_string.return_value = MagicMock(course_key='test-course-id-wrong')
         request = self.factory.post(self.url_usage_key)
@@ -937,17 +925,13 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
 
         usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI 1.3: Unit/component does not belong to course.',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI 1.3: Unit/component does not belong to course.')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @data('chapter', 'sequential')
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=False)
     @patch.object(LtiToolLaunchView, 'enroll')
@@ -972,7 +956,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
         enroll_mock: MagicMock,  # pylint: disable=unused-argument
         has_ags_mock: MagicMock,  # pylint: disable=unused-argument
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with block having incorrect block types.
 
@@ -987,7 +972,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             authenticate_and_login_mock: Mocked LtiToolLaunchView authenticate_and_login method.
             enroll_mock: Mocked LtiToolLaunchView enroll method.
             has_ags_mock: Mocked DjangoMessageLaunch has_ags method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         usage_key_mock.from_string.return_value = MagicMock(
             course_key=COURSE_ID,
@@ -999,23 +985,16 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
 
         usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                f'LTI 1.3: Invalid xblock type: {block_type}',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with(f'LTI 1.3: Invalid XBlock type: {block_type}')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(LtiGradedResource.objects, 'get_or_create')
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=True)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
@@ -1043,7 +1022,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         redirect_mock: MagicMock,  # pylint: disable=unused-argument
         has_ags_mock: MagicMock,
         lti_graded_resource_get_or_create: MagicMock,  # pylint: disable=unused-argument
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with AGS without lineitem.
 
@@ -1062,7 +1042,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             redirect_mock: Mocked redirect function.
             has_ags_mock: Mocked DjangoMessageLaunch has_ags method.
             lti_graded_resource_get_or_create: Mocked LtiGradedResource get_or_create method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         get_launch_data_mock.return_value = {
             **BASE_LAUNCH_DATA,
@@ -1077,23 +1058,16 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID)
 
         has_ags_mock.assert_called_once_with()
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                'LTI AGS: Missing AGS lineitem.',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with('LTI AGS: Missing AGS lineitem.')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @log_capture()
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._', return_value='')
     @patch.object(LtiGradedResource.objects, 'get_or_create')
     @patch.object(DjangoMessageLaunch, 'has_ags', return_value=True)
-    @patch(
-        'openedx_lti_tool_plugin.views.redirect',
-        return_value=MagicMock(status_code=200, content='random-content'),
-    )
+    @patch('openedx_lti_tool_plugin.views.redirect')
     @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
     @patch.object(LtiToolLaunchView, 'enroll', return_value=None)
     @patch.object(CourseKey, 'from_string', return_value='random-course-key')
@@ -1121,7 +1095,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         redirect_mock: MagicMock,  # pylint: disable=unused-argument
         has_ags_mock: MagicMock,
         lti_graded_resource_get_or_create: MagicMock,  # pylint: disable=unused-argument
-        log: LogCaptureForDecorator,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
     ):
         """Test POST request with AGS without score scope.
 
@@ -1140,7 +1115,8 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
             redirect_mock: Mocked redirect function.
             has_ags_mock: Mocked DjangoMessageLaunch has_ags method.
             lti_graded_resource_get_or_create: Mocked LtiGradedResource get_or_create method.
-            log: LogCapture fixture.
+            gettext_mock: Mocked gettext function.
+            logged_http_response_bad_request_mock: Mocked LoggedHttpResponseBadRequest class.
         """
         get_launch_data_mock.return_value = {
             **BASE_LAUNCH_DATA,
@@ -1155,15 +1131,10 @@ class TestLtiToolLaunchView(LtiViewMixin, TestCase):
         response = self.view_class.as_view()(request, COURSE_ID)
 
         has_ags_mock.assert_called_once_with()
-        log.check(
-            (
-                'openedx_lti_tool_plugin.views',
-                'ERROR',
-                f'LTI AGS: Missing required AGS scope: {AGS_SCORE_SCOPE}',
-            ),
-        )
-        self.assertEqual(response.content.decode('utf-8'), self.view_class.BAD_RESPONSE_MESSAGE)
-        self.assertEqual(response.status_code, 400)
+        gettext_mock.assert_called_once_with(f'LTI AGS: Missing required AGS scope: {AGS_SCORE_SCOPE}')
+        logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
+        self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
+        self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
     @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_lti_disabled(self):

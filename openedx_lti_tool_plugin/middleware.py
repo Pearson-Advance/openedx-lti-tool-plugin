@@ -76,5 +76,9 @@ class LtiViewPermissionMiddleware:
         ):
             return None
 
-        log.error('LTI Middleware: User %s path request blocked: %s', request.user, request.path)
+        log.error(
+            'LTI Middleware: User %s path request blocked: %s',
+            request.user,
+            request.build_absolute_uri(),
+        )
         return logout(request)

@@ -106,7 +106,7 @@ class TestLtiViewPermissionMiddleware(TestCase):
             (
                 'openedx_lti_tool_plugin.middleware',
                 'ERROR',
-                f'LTI Middleware: User {self.user} path request blocked: /',
+                f'LTI Middleware: User {self.user} path request blocked: http://testserver/',
             ),
         )
         logout_mock.assert_called_once_with(self.request)
