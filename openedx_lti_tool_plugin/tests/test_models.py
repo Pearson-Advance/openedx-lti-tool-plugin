@@ -15,7 +15,6 @@ from openedx_lti_tool_plugin.models import (
     LtiGradedResource,
     LtiGradedResourceManager,
     LtiProfile,
-    LtiProfileManager,
 )
 from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
 
@@ -26,124 +25,168 @@ class LtiProfileMixin():
     def setUp(self):
         """Add RequestFactory to test setup."""
         super().setUp()
-        self.profile = LtiProfile.objects.create(platform_id=ISS, client_id=AUD, subject_id=SUB)
-
-
-class TestLtiProfileManager(LtiProfileMixin, TestCase):
-    """Test LTI 1.3 profile model manager."""
-
-    @patch.object(LtiProfileManager, 'get')
-    def test_get_from_claims_exists(self, get_mock: MagicMock):
-        """Test instance can be found from LTI 1.3 launch claims.
-
-        Args:
-            get_mock: Mocked LtiProfileManager get method.
-        """
-        get_mock.return_value = self.profile
-        result = LtiProfile.objects.get_from_claims(iss=ISS, aud=AUD, sub=SUB)
-
-        get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
-        self.assertEqual(result, self.profile)
-
-    @patch.object(LtiProfileManager, 'get', side_effect=LtiProfile.DoesNotExist)
-    def test_get_from_claims_doesnotexists(self, get_mock: MagicMock):
-        """Test instance can't be found from LTI 1.3 launch claims.
-
-        Args:
-            get_mock: Mocked LtiProfileManager get method.
-        """
-        with self.assertRaises(LtiProfile.DoesNotExist):
-            result = LtiProfile.objects.get_from_claims(iss=None, aud=None, sub=None)
-
-            get_mock.assert_called_once_with(platform_id=None, client_id=None, subject_id=None)
-            self.assertIsNone(result)
-
-    @patch.object(LtiProfileManager, 'create')
-    @patch.object(LtiProfileManager, 'get_from_claims')
-    def test_get_or_create_from_claims_with_profile(self, get_from_claims_mock: MagicMock, create_mock: MagicMock):
-        """Test LtiProfile is retrieved instead of being created.
-
-        Args:
-            get_from_claims_mock: Mocked LtiProfileManager get_from_claims method.
-            create_mock: Mocked LtiProfileManager create method.
-        """
-        _, created = LtiProfile.objects.get_or_create_from_claims(iss=ISS, aud=AUD, sub=SUB)
-
-        get_from_claims_mock.assert_called_once_with(iss=ISS, aud=AUD, sub=SUB)
-        create_mock.assert_not_called()
-        self.assertFalse(created)
-
-    @patch.object(LtiProfileManager, 'create')
-    @patch.object(LtiProfileManager, 'get_from_claims', side_effect=LtiProfile.DoesNotExist)
-    def test_get_or_create_from_claims_without_profile(self, get_from_claims_mock: MagicMock, create_mock: MagicMock):
-        """Test LtiProfile is created instead of being retrieved.
-
-        Args:
-            get_from_claims_mock: Mocked LtiProfileManager get_from_claims method.
-            create_mock: Mocked LtiProfileManager create method.
-        """
-        _, created = LtiProfile.objects.get_or_create_from_claims(iss=ISS, aud=AUD, sub=SUB)
-
-        get_from_claims_mock.assert_called_once_with(iss=ISS, aud=AUD, sub=SUB)
-        create_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
-        self.assertTrue(created)
+        self.pii = {'x': 'x'}
+        self.profile = LtiProfile.objects.create(
+            platform_id=ISS,
+            client_id=AUD,
+            subject_id=SUB,
+            pii=self.pii
+        )
 
 
 class TestLtiProfile(LtiProfileMixin, TestCase):
     """Test LTI 1.3 profile model."""
 
-    @patch.object(get_user_model().objects, 'create')
+    @patch.object(get_user_model().objects, 'get_or_create')
     @patch('openedx_lti_tool_plugin.models.getattr', return_value=False)
+    @patch('openedx_lti_tool_plugin.models.user_profile')
     @patch('openedx_lti_tool_plugin.models.super')
-    def test_save_method_without_user(
+    def test_save_method_without_user_and_user_created(
         self,
         super_mock: MagicMock,
+        user_profile_mock: MagicMock,
         getattr_mock: MagicMock,
-        user_create_mock: MagicMock,
+        user_get_or_create_mock: MagicMock,
     ):
-        """Test user is created on save when profile has no user.
+        """Test save method without user and user is created.
 
         Args:
             super_mock: Mocked openedx_lti_tool_plugin models module super method.
-            getattr_mock: Mocked openedx_lti_tool_plugin models moduler getattr function.
-            user_create_mock: Mocked User model create method.
+            user_profile_objects_mock: Mocked user_profile function.
+            getattr_mock: Mocked openedx_lti_tool_plugin models module getattr function.
+            user_get_or_create_mock: Mocked User model get_or_create method.
         """
         self_mock = MagicMock()
+        user_get_or_create_mock.return_value = self_mock.user, True
+
         LtiProfile.save(self_mock, [], {})
 
         getattr_mock.assert_called_once_with(self_mock, 'user', None)
-        user_create_mock.assert_called_once_with(
+        user_get_or_create_mock.assert_called_once_with(
             username=f'{app_config.name}.{self_mock.uuid}',
             email=f'{self_mock.uuid}@{app_config.name}',
         )
         self_mock.user.set_unusable_password.assert_called_once_with()
         self_mock.user.save.assert_called_once_with()
+        user_profile_mock().objects.get_or_create.assert_called_once_with(user=self_mock.user)
         super_mock().save.assert_called_once_with([], {})
 
-    @patch.object(get_user_model().objects, 'create')
+    @patch.object(get_user_model().objects, 'get_or_create')
+    @patch('openedx_lti_tool_plugin.models.getattr', return_value=False)
+    @patch('openedx_lti_tool_plugin.models.user_profile')
+    @patch('openedx_lti_tool_plugin.models.super')
+    def test_save_method_without_user_and_user_not_created(
+        self,
+        super_mock: MagicMock,
+        user_profile_mock: MagicMock,
+        getattr_mock: MagicMock,
+        user_get_or_create_mock: MagicMock,
+    ):
+        """Test save method without user and user is not created.
+
+        Args:
+            super_mock: Mocked openedx_lti_tool_plugin models module super method.
+            user_profile_objects_mock: Mocked user_profile function.
+            getattr_mock: Mocked openedx_lti_tool_plugin models module getattr function.
+            user_get_or_create_mock: Mocked User model get_or_create method.
+        """
+        self_mock = MagicMock()
+        user_get_or_create_mock.return_value = self_mock.user, False
+
+        LtiProfile.save(self_mock, [], {})
+
+        getattr_mock.assert_called_once_with(self_mock, 'user', None)
+        user_get_or_create_mock.assert_called_once_with(
+            username=f'{app_config.name}.{self_mock.uuid}',
+            email=f'{self_mock.uuid}@{app_config.name}',
+        )
+        self_mock.user.set_unusable_password.assert_not_called()
+        self_mock.user.save.assert_not_called()
+        user_profile_mock().objects.get_or_create.assert_called_once_with(user=self_mock.user)
+        super_mock().save.assert_called_once_with([], {})
+
+    @patch.object(get_user_model().objects, 'get_or_create')
     @patch('openedx_lti_tool_plugin.models.getattr', return_value=True)
+    @patch('openedx_lti_tool_plugin.models.user_profile')
     @patch('openedx_lti_tool_plugin.models.super')
     def test_save_method_with_user(
         self,
         super_mock: MagicMock,
+        user_profile_mock: MagicMock,
         getattr_mock: MagicMock,
-        user_create_mock: MagicMock,
+        user_get_or_create_mock: MagicMock,
     ):
         """Test user is not created on save when profile has user.
 
         Args:
             super_mock: Mocked openedx_lti_tool_plugin models module super method.
+            user_profile_objects_mock: Mocked user_profile function.
             getattr_mock: Mocked openedx_lti_tool_plugin models moduler getattr function.
-            user_create_mock: Mocked User model create method.
+            user_get_or_create_mock: Mocked User model get_or_create method.
         """
         self_mock = MagicMock()
+
         LtiProfile.save(self_mock, [], {})
 
         getattr_mock.assert_called_once_with(self_mock, 'user', None)
-        user_create_mock.assert_not_called()
+        user_get_or_create_mock.assert_not_called()
         self_mock.user.set_unusable_password.assert_not_called()
         self_mock.user.save.assert_not_called()
+        user_profile_mock().objects.get_or_create.assert_not_called()
         super_mock().save.assert_called_once_with([], {})
+
+    @patch.object(LtiProfile, 'save')
+    @patch('openedx_lti_tool_plugin.models.get_pii_from_claims')
+    def test_update_pii_with_new_pii(self, get_pii_from_claims_mock: MagicMock, save_mock: MagicMock):
+        """Test update_pii method with new PII.
+
+        Args:
+            get_pii_from_claims_mock: Mocked get_pii_from_claims function.
+            save_mock: Mocked LtiProfile model save method.
+        """
+        new_pii = {'x': 'y', 'y': 'y'}
+        get_pii_from_claims_mock.return_value = new_pii
+
+        self.profile.update_pii(**new_pii)
+
+        self.assertEqual(self.profile.pii, new_pii)
+        get_pii_from_claims_mock.assert_called_once_with(new_pii)
+        save_mock.assert_called_once_with(update_fields=['pii'])
+
+    @patch.object(LtiProfile, 'save')
+    @patch('openedx_lti_tool_plugin.models.get_pii_from_claims')
+    def test_update_pii_with_unchanged_pii(self, get_pii_from_claims_mock: MagicMock, save_mock: MagicMock):
+        """Test update_pii method with unchanged PII.
+
+        Args:
+            get_pii_from_claims_mock: Mocked get_pii_from_claims function.
+            save_mock: Mocked LtiProfile model save method.
+        """
+        get_pii_from_claims_mock.return_value = self.pii
+
+        self.profile.update_pii(**self.pii)
+
+        self.assertEqual(self.profile.pii, self.pii)
+        get_pii_from_claims_mock.assert_called_once_with(self.pii)
+        save_mock.assert_not_called()
+
+    @patch.object(LtiProfile, 'save')
+    @patch('openedx_lti_tool_plugin.models.get_pii_from_claims')
+    def test_update_pii_with_removed_pii_value(self, get_pii_from_claims_mock: MagicMock, save_mock: MagicMock):
+        """Test update_pii method with removed value on PII.
+
+        Args:
+            get_pii_from_claims_mock: Mocked get_pii_from_claims function.
+            save_mock: Mocked LtiProfile model save method.
+        """
+        new_pii = {'x': '', 'y': 'y'}
+        get_pii_from_claims_mock.return_value = new_pii
+
+        self.profile.update_pii(**new_pii)
+
+        self.assertEqual(self.profile.pii, {'x': 'x', 'y': 'y'})
+        get_pii_from_claims_mock.assert_called_once_with(new_pii)
+        save_mock.assert_called_once_with(update_fields=['pii'])
 
     def test_str_method(self):
         """Test __str__ method return value."""

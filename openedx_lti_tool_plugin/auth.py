@@ -40,7 +40,7 @@ class LtiAuthenticationBackend(ModelBackend):
         log.debug('LTI 1.3 authentication: iss=%s, sub=%s, aud=%s', iss, sub, aud)
 
         try:
-            profile = LtiProfile.objects.get_from_claims(iss=iss, aud=aud, sub=sub)
+            profile = LtiProfile.objects.get(platform_id=iss, client_id=aud, subject_id=sub)
         except LtiProfile.DoesNotExist:
             return None
 

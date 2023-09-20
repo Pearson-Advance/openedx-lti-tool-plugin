@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime
 import json
 import uuid
-from typing import Optional, Tuple, TypeVar, Union
+from typing import Optional, TypeVar, Union
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
@@ -21,42 +21,9 @@ from pylti1p3.grade import Grade
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
+from openedx_lti_tool_plugin.utils import get_pii_from_claims
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
-
-
-class LtiProfileManager(models.Manager):
-    """LTI 1.3 profile model manager."""
-
-    def get_from_claims(self, iss: str, aud: str, sub: str) -> LtiProfile:
-        """Get an instance from LTI 1.3 launch claims.
-
-        Args:
-            iss: LTI platform id claim.
-            aud: LTI client id claim.
-            sub: LTI subject id claim.
-
-        Returns:
-            LTI profile instance from launch claims.
-        """
-        return self.get(platform_id=iss, client_id=aud, subject_id=sub)
-
-    def get_or_create_from_claims(self, iss: str, aud: str, sub: str) -> Tuple[LtiProfile, bool]:
-        """Get or create an instance from LTI 1.3 launch claims.
-
-        Args:
-            iss: LTI platform id claim.
-            aud: LTI client id claim.
-            sub: LTI subject id claim.
-
-        Returns:
-            LTI profile instance from launch claims and a
-            boolean specifying whether a new LTI profile was created.
-        """
-        try:
-            return self.get_from_claims(iss=iss, aud=aud, sub=sub), False
-        except self.model.DoesNotExist:
-            return self.create(platform_id=iss, client_id=aud, subject_id=sub), True
 
 
 class LtiProfile(models.Model):
@@ -65,7 +32,6 @@ class LtiProfile(models.Model):
     A unique representation of the LTI subject that initiated an LTI launch.
     """
 
-    objects = LtiProfileManager()
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user = models.OneToOneField(
         get_user_model(),
@@ -89,12 +55,17 @@ class LtiProfile(models.Model):
         verbose_name=_('Subject ID'),
         help_text=_('Identifies the entity that initiated the launch request.'),
     )
+    pii = models.JSONField(
+        default=dict,
+        verbose_name=_('PII'),
+        help_text=_('Profile PII.'),
+    )
 
     class Meta:
         """Meta options."""
 
-        verbose_name = 'LTI Profile'
-        verbose_name_plural = 'LTI Profiles'
+        verbose_name = 'LTI profile'
+        verbose_name_plural = 'LTI profiles'
         unique_together = ['platform_id', 'client_id', 'subject_id']
         indexes = [
             models.Index(
@@ -117,19 +88,47 @@ class LtiProfile(models.Model):
             return super().save(*args, **kwargs)
 
         with transaction.atomic():
-            # Create edx user.
-            self.user = get_user_model().objects.create(
+            # Get or create edx user.
+            self.user, created = get_user_model().objects.get_or_create(
                 username=f'{app_config.name}.{self.uuid}',
                 email=f'{self.uuid}@{app_config.name}',
             )
-            self.user.set_unusable_password()  # LTI users can only auth throught LTI launches.
-            self.user.save()
 
-            # Create edx user profile.
-            profile = user_profile()(user=self.user)
-            profile.save()
+            # Set password unusable if user is created.
+            if created:
+                self.user.set_unusable_password()  # LTI users can only auth throught LTI launches.
+                self.user.save()
+
+            # Get or create edx user profile.
+            user_profile().objects.get_or_create(user=self.user)
 
             return super().save(*args, **kwargs)
+
+    def update_pii(self, **kwargs: dict):
+        """
+        Update profile PII.
+
+        This method will get all PII from kwargs and will check if any of the values
+        exist or are different from the value currently set on the model instance
+        and update the value if true.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments.
+        """
+        # Get PII from keyword argument.
+        new_pii = get_pii_from_claims(kwargs)
+        # Create a dictionary with existing PII to compare against new PII.
+        merged_pii = {**self.pii}
+
+        # Add new PII value to merged dictionary of PII if the new PII value exists
+        # and is different from existing PII value on this profile.
+        for field, value in new_pii.items():
+            if value and value != merged_pii.get(field):
+                merged_pii[field] = value
+
+        if merged_pii != self.pii:
+            self.pii = merged_pii
+            self.save(update_fields=['pii'])
 
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
