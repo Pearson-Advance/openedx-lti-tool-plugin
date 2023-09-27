@@ -176,7 +176,7 @@ class LtiToolLaunchView(LtiToolBaseView):
     def get_identity_claims(
         self,
         launch_data: dict
-    ) -> Tuple[str, Union[str, list], str, dict]:
+    ) -> Tuple[str, str, str, dict]:
         """Get identity claims from launch data.
 
         Args:
@@ -192,7 +192,7 @@ class LtiToolLaunchView(LtiToolBaseView):
             get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {},
         )
 
-    def check_course_access_permission(self, course_id: str, iss: str, aud: str) -> None:
+    def check_course_access_permission(self, course_id: str, iss: str, aud: str):
         """Check LTI tool access to course.
 
         Args:
