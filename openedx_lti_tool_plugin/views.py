@@ -1,6 +1,6 @@
 """Views for openedx_lti_tool_plugin."""
 import logging
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Any, Callable, Optional, Tuple, TypeVar, Union
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login
@@ -22,6 +22,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblo
 from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
 from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_user_change_as_expected
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
+from openedx_lti_tool_plugin.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
 from openedx_lti_tool_plugin.utils import get_client_id, get_course_outline, get_pii_from_claims
@@ -155,6 +156,68 @@ class LtiToolLoginView(LtiToolBaseView):
 class LtiToolLaunchView(LtiToolBaseView):
     """LTI 1.3 platform tool launch view."""
 
+    def get_launch_data(self, launch_message: DjangoMessageLaunch) -> dict:
+        """Get LTI launch data from message.
+
+        Args:
+            launch_message: Message object of the launch.
+
+        Returns:
+            A dictionary containing launch data.
+
+        Raises:
+            LtiToolLaunchException when get_launch_data fails.
+        """
+        try:
+            return launch_message.get_launch_data()
+        except LtiException as exc:
+            raise LtiToolLaunchException(_(f'Launch message validation failed: {exc}')) from exc
+
+    def get_identity_claims(
+        self,
+        launch_data: dict
+    ) -> Tuple[str, Union[str, list], str, dict]:
+        """Get identity claims from launch data.
+
+        Args:
+            launch_data: Dictionary containing the LTI launch data.
+
+        Returns:
+            A tuple containing the iss, aud, sub and pii claims.
+        """
+        return (
+            launch_data.get('iss'),
+            get_client_id(launch_data.get('aud'), launch_data.get('azp')),
+            launch_data.get('sub'),
+            get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {},
+        )
+
+    def check_course_access_permission(self, course_id: str, iss: str, aud: str) -> None:
+        """Check LTI tool access to course.
+
+        Args:
+            course_id: Course ID string.
+            iss: LTI issuer claim.
+            aud: LTI audience claim.
+
+        Raises:
+            LtiToolLaunchException when course access configuration is not found
+            or when the given course_id is not allowed.
+        """
+        if not COURSE_ACCESS_CONFIGURATION.is_enabled():
+            return
+
+        lti_tool_config = self.tool_config.get_lti_tool(iss, aud)
+        course_access_config = CourseAccessConfiguration.objects.filter(
+            lti_tool=lti_tool_config,
+        ).first()
+
+        if not course_access_config:
+            raise LtiToolLaunchException(f'Course access configuration for {lti_tool_config.title} not found.')
+
+        if not course_access_config.is_course_id_allowed(course_id):
+            raise LtiToolLaunchException(f'Course ID {course_id} is not allowed.')
+
     def get_lti_profile(
         self,
         iss: str,
@@ -195,7 +258,7 @@ class LtiToolLaunchView(LtiToolBaseView):
         iss: str,
         aud: Union[list, str],
         sub: str,
-    ) -> Optional[UserT]:
+    ) -> UserT:
         """Authenticate and login the LTI profile user for the LTI launch.
 
         Args:
@@ -205,12 +268,12 @@ class LtiToolLaunchView(LtiToolBaseView):
             sub: LTI subject claim.
 
         Returns:
-            LTI profile Open edX user instance or None.
+            LTI profile Open edX user instance.
         """
         edx_user = authenticate(request, iss=iss, aud=aud, sub=sub)
 
-        if not edx_user:  # Return None if user is not found.
-            return None
+        if not edx_user:
+            raise LtiToolLaunchException(_('Profile authentication failed.'))
 
         login(request, edx_user)  # Login edx platform user.
         mark_user_change_as_expected(edx_user.id)  # Mark user change as safe.
@@ -225,20 +288,132 @@ class LtiToolLaunchView(LtiToolBaseView):
             edx_user:  Open edX user instance.
             course_key: Course key string.
         """
-        if not course_enrollment().get_enrollment(edx_user, course_key):
-            course_enrollment().enroll(
-                user=edx_user,
-                course_key=course_key,
-                check_access=True,
-                request=request,
-            )
+        try:
+            if not course_enrollment().get_enrollment(edx_user, course_key):
+                course_enrollment().enroll(
+                    user=edx_user,
+                    course_key=course_key,
+                    check_access=True,
+                    request=request,
+                )
+        except course_enrollment_exception() as exc:
+            raise LtiToolLaunchException(_(f'Course enrollment failed: {exc}')) from exc
+
+    def get_course_launch_response(self, course_id: str) -> HttpResponseRedirect:
+        """Get redirect for entire course launch.
+
+        Args:
+            course_id: Course ID string.
+
+        Returns:
+            Redirect to course home view (lti-course-home url).
+
+        Raises:
+            LtiToolLaunchException in case entire course launches are disabled.
+        """
+        if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
+            raise LtiToolLaunchException(_('Complete course launches are not enabled.'))
+
+        return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
+
+    def get_unit_component_launch_response(self, usage_key_string: str, course_id: str) -> HttpResponseRedirect:
+        """Get redirect for unit/component launch.
+
+        Args:
+            course_id: Course ID string.
+
+        Returns:
+            Redirect to xblock view (lti-xblock url).
+
+        Raises:
+            LtiToolLaunchException in case unit or component doesn't belong to the course or
+            when the given xblock has an incorrect type.
+        """
+        usage_key = UsageKey.from_string(usage_key_string)
+
+        if str(usage_key.course_key) != course_id:
+            raise LtiToolLaunchException(_('Unit/component does not belong to course.'))
+
+        if usage_key.block_type in ['chapter', 'sequential']:
+            raise LtiToolLaunchException(_(f'Invalid XBlock type: {usage_key.block_type}'))
+
+        return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
+
+    def handle_ags(
+        self,
+        launch_message: DjangoMessageLaunch,
+        launch_data: dict,
+        lti_profile: LtiProfile,
+        context_key: str,
+    ) -> Optional[Tuple[LtiGradedResource, bool]]:
+        """Handle launch AGS (Assignment and Grade Services).
+
+        Gets or creates a LtiGradedResource instance associated to the launch.
+
+        Args:
+            launch_message: Message object of the launch.
+            launch_data: Dictionary containing the LTI launch data.
+            lti_profile: LTI profile associated to the launch claims.
+            context_key: Course ID or Unit/component key string.
+
+        Returns:
+            Instance of LtiGradedResource.
+
+        Raises:
+            LtiToolLaunchException when lineitem or AGS scope are missing.
+        """
+        if not launch_message.has_ags():
+            return None
+
+        ags_endpoint = launch_data.get(AGS_CLAIM_ENDPOINT, {})
+        lineitem = ags_endpoint.get('lineitem')
+
+        if not lineitem:
+            raise LtiToolLaunchException(_('Missing AGS lineitem.'))
+
+        if AGS_SCORE_SCOPE not in ags_endpoint.get('scope', []):
+            raise LtiToolLaunchException(_(f'Missing required AGS scope: {AGS_SCORE_SCOPE}'))
+
+        return LtiGradedResource.objects.get_or_create(
+            lti_profile=lti_profile,
+            context_key=context_key,
+            lineitem=lineitem,
+        )
+
+    def get_resource_launch(
+        self,
+        course_id: str,
+        usage_key_string: str = '',
+    ) -> Tuple[HttpResponse, str]:
+        """Get launches responses for the resource.
+
+        Gets or creates a LtiGradedResource instance associated to the launch.
+
+        Args:
+            course_id: Course ID string.
+            usage_key_string: Usage Key of a unit or component.
+
+        Returns:
+            A tuple containing a redirect response corresponding to the resource
+            (course, unit or component) and a context key.
+        """
+        # Course launch response.
+        if not usage_key_string:
+            context_key = course_id
+            response = self.get_course_launch_response(course_id)
+        # Unit/component launch response.
+        else:
+            context_key = usage_key_string
+            response = self.get_unit_component_launch_response(usage_key_string, course_id)
+
+        return response, context_key
 
     def post(
         self,
         request: HttpRequest,
         course_id: str,
         usage_key_string: str = '',
-    ) -> Union[JsonResponse, LoggedHttpResponseBadRequest]:
+    ) -> Union[HttpResponse, LoggedHttpResponseBadRequest]:
         """Process LTI 1.3 platform launch requests.
 
         If the usage_key_string param is present, returns an LTI launch of the unit/component
@@ -252,87 +427,41 @@ class LtiToolLaunchView(LtiToolBaseView):
         Returns:
             HTTP response with LTI launch content or HTTP 400 response.
         """
-        # Get LTI 1.3 launch message and validate required request data.
-        launch_message = DjangoMessageLaunch(request, self.tool_config, launch_data_storage=self.tool_storage)
-
         try:
-            launch_data = launch_message.get_launch_data()
-        except LtiException as exc:
-            return LoggedHttpResponseBadRequest(_(f'LTI 1.3: Launch message validation failed: {exc}'))
-
-        # Get identity claims.
-        iss = launch_data.get('iss')
-        aud = get_client_id(launch_data.get('aud'), launch_data.get('azp'))
-        sub = launch_data.get('sub')
-        pii = get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {}
-
-        # Validate if LTI tool has access to course.
-        if COURSE_ACCESS_CONFIGURATION.is_enabled():
-            lti_tool_config = self.tool_config.get_lti_tool(iss, aud)
-            course_access_config = CourseAccessConfiguration.objects.filter(lti_tool=lti_tool_config).first()
-
-            if not course_access_config:
-                return LoggedHttpResponseBadRequest(
-                    _(f'LTI 1.3: Course access configuration for {lti_tool_config.title} not found.'),
-                )
-
-            if not course_access_config.is_course_id_allowed(course_id):
-                return LoggedHttpResponseBadRequest(_(f'LTI 1.3: Course ID {course_id} is not allowed.'))
-
-        # Process LTI profile.
-        lti_profile = self.get_lti_profile(iss, aud, sub, pii)
-
-        # Authenticate and login LTI profile user.
-        edx_user = self.authenticate_and_login(request, iss, aud, sub)
-
-        if not edx_user:
-            return LoggedHttpResponseBadRequest(_('LTI 1.3: Profile authentication failed.'))
-
-        # Enroll LTI profile user to course.
-        try:
-            self.enroll(request, edx_user, CourseKey.from_string(course_id))
-        except course_enrollment_exception() as exc:
-            return LoggedHttpResponseBadRequest(_(f'LTI 1.3: Course enrollment failed: {exc}'))
-
-        # Validate and generate course launch response.
-        if not usage_key_string:
-            if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
-                return LoggedHttpResponseBadRequest(_('LTI 1.3: Complete course launches are not enabled.'))
-
-            context_key = course_id
-            response = redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
-
-        # Validate and generate unit/component launch response.
-        else:
-            usage_key = UsageKey.from_string(usage_key_string)
-
-            if str(usage_key.course_key) != course_id:
-                return LoggedHttpResponseBadRequest(_('LTI 1.3: Unit/component does not belong to course.'))
-
-            if usage_key.block_type in ['chapter', 'sequential']:
-                return LoggedHttpResponseBadRequest(_(f'LTI 1.3: Invalid XBlock type: {usage_key.block_type}'))
-
-            context_key = usage_key_string
-            response = redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
-
-        # Handle AGS claims.
-        if launch_message.has_ags():
-            ags_endpoint = launch_data.get(AGS_CLAIM_ENDPOINT, {})
-            lineitem = ags_endpoint.get('lineitem')
-
-            if not lineitem:
-                return LoggedHttpResponseBadRequest(_('LTI AGS: Missing AGS lineitem.'))
-
-            if AGS_SCORE_SCOPE not in ags_endpoint.get('scope', []):
-                return LoggedHttpResponseBadRequest(_(f'LTI AGS: Missing required AGS scope: {AGS_SCORE_SCOPE}'))
-
-            LtiGradedResource.objects.get_or_create(
-                lti_profile=lti_profile,
-                context_key=context_key,
-                lineitem=lineitem,
+            # Get LTI 1.3 launch message and validate required request data.
+            launch_message = DjangoMessageLaunch(
+                request,
+                self.tool_config,
+                launch_data_storage=self.tool_storage,
             )
+            launch_data = self.get_launch_data(launch_message)
+            iss, aud, sub, pii = self.get_identity_claims(launch_data)
 
-        return response
+            # Validate if LTI tool has access to course.
+            self.check_course_access_permission(course_id, iss, aud)
+
+            # Process LTI profile.
+            lti_profile = self.get_lti_profile(iss, aud, sub, pii)
+
+            # Authenticate and login LTI profile user.
+            edx_user = self.authenticate_and_login(request, iss, aud, sub)
+
+            # Enroll user.
+            self.enroll(request, edx_user, CourseKey.from_string(course_id))
+
+            # Handle resource launch.
+            if launch_message.is_resource_launch():
+                resource_response, context_key = self.get_resource_launch(
+                    course_id,
+                    usage_key_string,
+                )
+                self.handle_ags(launch_message, launch_data, lti_profile, context_key)
+
+                return resource_response
+
+            raise LtiToolLaunchException(_('Only resource link launch request are supported.'))
+        except LtiToolLaunchException as exc:
+            return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Launch failed: {exc}'))
 
 
 class LtiToolJwksView(LtiToolBaseView):
