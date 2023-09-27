@@ -19,5 +19,5 @@ class LoggedHttpResponseBadRequest(HttpResponseBadRequest):
         """
         super().__init__(message, *args, **kwargs)
 
-        if isinstance(message, str):
+        if hasattr(message, '__str__'):
             log.error(message)
