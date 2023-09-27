@@ -54,18 +54,18 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
 
     def test_post_with_course_launch(
         self,
-        course_key_mock,
-        tool_storage_mock,
-        tool_conf_mock,
-        get_resource_launch_mock,
-        handle_ags_mock,
-        enroll_mock,
-        authenticate_and_login_mock,
-        get_lti_profile_mock,
-        check_course_access_permission_mock,
-        get_identity_claims_mock,
-        get_launch_data_mock,
-        message_launch_mock,
+        course_key_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+        get_resource_launch_mock: MagicMock,
+        handle_ags_mock: MagicMock,
+        enroll_mock: MagicMock,
+        authenticate_and_login_mock: MagicMock,
+        get_lti_profile_mock: MagicMock,
+        check_course_access_permission_mock: MagicMock,
+        get_identity_claims_mock: MagicMock,
+        get_launch_data_mock: MagicMock,
+        message_launch_mock: MagicMock,
     ):
         """Test POST request with course launch.
 
@@ -85,12 +85,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
             get_launch_data_mock: Mocked 'get_launch_data' method.
             message_launch_mock: Mocked 'DjangoMessageLaunch' class.
         """
-        get_identity_claims_mock.return_value = (
-            ISS,
-            AUD,
-            SUB,
-            PII,
-        )
+        get_identity_claims_mock.return_value = (ISS, AUD, SUB, PII)
         get_resource_launch_mock.return_value = (
             MagicMock(),
             COURSE_ID,
@@ -119,18 +114,18 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
 
     def test_post_with_unit_or_component_launch(
         self,
-        course_key_mock,
-        tool_storage_mock,
-        tool_conf_mock,
-        get_resource_launch_mock,
-        handle_ags_mock,
-        enroll_mock,
-        authenticate_and_login_mock,
-        get_lti_profile_mock,
-        check_course_access_permission_mock,
-        get_identity_claims_mock,
-        get_launch_data_mock,
-        message_launch_mock,
+        course_key_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+        get_resource_launch_mock: MagicMock,
+        handle_ags_mock: MagicMock,
+        enroll_mock: MagicMock,
+        authenticate_and_login_mock: MagicMock,
+        get_lti_profile_mock: MagicMock,
+        check_course_access_permission_mock: MagicMock,
+        get_identity_claims_mock: MagicMock,
+        get_launch_data_mock: MagicMock,
+        message_launch_mock: MagicMock,
     ):
         """Test POST request with unit or component launch.
 
@@ -150,12 +145,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
             get_launch_data_mock: Mocked 'get_launch_data' method.
             message_launch_mock: Mocked 'DjangoMessageLaunch' class.
         """
-        get_identity_claims_mock.return_value = (
-            ISS,
-            AUD,
-            SUB,
-            PII,
-        )
+        get_identity_claims_mock.return_value = (ISS, AUD, SUB, PII)
         get_resource_launch_mock.return_value = (
             MagicMock(),
             USAGE_KEY,
@@ -184,18 +174,18 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
 
     def test_post_no_resource_launch(
         self,
-        course_key_mock,  # pylint: disable=unused-argument
-        tool_storage_mock,  # pylint: disable=unused-argument
-        tool_conf_mock,  # pylint: disable=unused-argument
-        get_resource_launch_mock,
-        handle_ags_mock,
-        enroll_mock,  # pylint: disable=unused-argument
-        authenticate_and_login_mock,  # pylint: disable=unused-argument
-        get_lti_profile_mock,  # pylint: disable=unused-argument
-        check_course_access_permission_mock,  # pylint: disable=unused-argument
-        get_identity_claims_mock,
-        get_launch_data_mock,  # pylint: disable=unused-argument
-        message_launch_mock,
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        get_resource_launch_mock: MagicMock,
+        handle_ags_mock: MagicMock,
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        get_lti_profile_mock: MagicMock,  # pylint: disable=unused-argument
+        check_course_access_permission_mock: MagicMock,  # pylint: disable=unused-argument
+        get_identity_claims_mock: MagicMock,
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        message_launch_mock: MagicMock,
     ):
         """Test POST request when is not resource link.
 
@@ -215,12 +205,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
             get_launch_data_mock: Mocked 'get_launch_data' method.
             message_launch_mock: Mocked 'DjangoMessageLaunch' class.
         """
-        get_identity_claims_mock.return_value = (
-            ISS,
-            AUD,
-            SUB,
-            PII,
-        )
+        get_identity_claims_mock.return_value = (ISS, AUD, SUB, PII)
         message_launch_mock().is_resource_launch.return_value = False
         request = self.factory.post(self.url)
         request.user = self.user
