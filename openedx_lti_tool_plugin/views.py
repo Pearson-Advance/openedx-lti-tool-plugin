@@ -24,8 +24,8 @@ from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_use
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
-from openedx_lti_tool_plugin.utils import get_course_outline
-from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
+from openedx_lti_tool_plugin.utils import get_client_id, get_course_outline, get_pii_from_claims
+from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION, SAVE_PII_DATA
 
 log = logging.getLogger(__name__)
 
@@ -155,6 +155,40 @@ class LtiToolLoginView(LtiToolBaseView):
 class LtiToolLaunchView(LtiToolBaseView):
     """LTI 1.3 platform tool launch view."""
 
+    def get_lti_profile(
+        self,
+        iss: str,
+        aud: Union[list, str],
+        sub: str,
+        pii: dict,
+    ) -> LtiProfile:
+        """Get LTI profile.
+
+        Get or create LTI profile and update PII data if not created.
+
+        Args:
+            iss: LTI issuer claim.
+            aud: LTI audience claim.
+            sub: LTI subject claim.
+            pii: PII claims dictionary.
+
+        Returns:
+            LTI profile.
+        """
+        # Get or create LTI profile from claims.
+        lti_profile, lti_profile_created = LtiProfile.objects.get_or_create(
+            platform_id=iss,
+            client_id=aud,
+            subject_id=sub,
+            defaults={'pii': pii},
+        )
+
+        # Update LTI profile PII.
+        if not lti_profile_created:
+            lti_profile.update_pii(**pii)
+
+        return lti_profile
+
     def authenticate_and_login(
         self,
         request: HttpRequest,
@@ -228,12 +262,13 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         # Get identity claims.
         iss = launch_data.get('iss')
-        aud = launch_data.get('aud')
+        aud = get_client_id(launch_data.get('aud'), launch_data.get('azp'))
         sub = launch_data.get('sub')
+        pii = get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {}
 
         # Validate if LTI tool has access to course.
         if COURSE_ACCESS_CONFIGURATION.is_enabled():
-            lti_tool_config = self.tool_config.get_lti_tool(iss, launch_data.get('azp'))
+            lti_tool_config = self.tool_config.get_lti_tool(iss, aud)
             course_access_config = CourseAccessConfiguration.objects.filter(lti_tool=lti_tool_config).first()
 
             if not course_access_config:
@@ -244,8 +279,10 @@ class LtiToolLaunchView(LtiToolBaseView):
             if not course_access_config.is_course_id_allowed(course_id):
                 return LoggedHttpResponseBadRequest(_(f'LTI 1.3: Course ID {course_id} is not allowed.'))
 
+        # Process LTI profile.
+        lti_profile = self.get_lti_profile(iss, aud, sub, pii)
+
         # Authenticate and login LTI profile user.
-        lti_profile = LtiProfile.objects.get_or_create_from_claims(iss=iss, aud=aud, sub=sub)
         edx_user = self.authenticate_and_login(request, iss, aud, sub)
 
         if not edx_user:
@@ -290,7 +327,7 @@ class LtiToolLaunchView(LtiToolBaseView):
                 return LoggedHttpResponseBadRequest(_(f'LTI AGS: Missing required AGS scope: {AGS_SCORE_SCOPE}'))
 
             LtiGradedResource.objects.get_or_create(
-                lti_profile=lti_profile[0],
+                lti_profile=lti_profile,
                 context_key=context_key,
                 lineitem=lineitem,
             )

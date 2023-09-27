@@ -8,7 +8,7 @@ from testfixtures import log_capture
 from testfixtures.logcapture import LogCaptureForDecorator
 
 from openedx_lti_tool_plugin.auth import LtiAuthenticationBackend
-from openedx_lti_tool_plugin.models import LtiProfile, LtiProfileManager
+from openedx_lti_tool_plugin.models import LtiProfile
 from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
 
 
@@ -22,24 +22,24 @@ class TestLtiAuthenticationBackend(TestCase):
         self.request = HttpRequest()
 
     @log_capture()
-    @patch.object(LtiProfileManager, 'get_from_claims')
+    @patch.object(LtiProfile.objects, 'get')
     @patch.object(LtiAuthenticationBackend, 'user_can_authenticate')
     def test_with_profile_and_user_active(
         self,
         user_can_authenticate_mock: MagicMock,
-        get_from_claims_mock: MagicMock,
+        profile_get_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test authentication with profile and active user.
 
         Args:
             user_can_authenticate_mock: Mocked User model user_can_authenticate function.
-            get_from_claims_mock: Mocked LtiProfileManager get_from_claims method.
+            profile_get_mock: Mocked LtiProfile.objects get method.
             log: LogCapture fixture.
         """
         result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
 
-        get_from_claims_mock.assert_called_once_with(iss=ISS, aud=AUD, sub=SUB)
+        profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
         user_can_authenticate_mock.assert_called_once_with(result)
         log.check(
             (
@@ -50,44 +50,44 @@ class TestLtiAuthenticationBackend(TestCase):
             (
                 'openedx_lti_tool_plugin.auth',
                 'DEBUG',
-                f'LTI 1.3 authentication profile: profile={get_from_claims_mock()} user={result}',
+                f'LTI 1.3 authentication profile: profile={profile_get_mock()} user={result}',
             ),
         )
         self.assertIsNotNone(result)
 
-    @patch.object(LtiProfileManager, 'get_from_claims', side_effect=LtiProfile.DoesNotExist)
+    @patch.object(LtiProfile.objects, 'get', side_effect=LtiProfile.DoesNotExist)
     def test_without_profile(
         self,
-        get_from_claims_mock: MagicMock,
+        profile_get_mock: MagicMock,
     ):
         """Test authentication without profile.
 
         Args:
-            get_from_claims_mock: Mocked LtiProfileManager get_from_claims method.
+            profile_get_mock: Mocked LtiProfile.objects get method.
         """
         result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
 
-        get_from_claims_mock.assert_called_once_with(iss=ISS, aud=AUD, sub=SUB)
-        self.assertRaises(LtiProfile.DoesNotExist, get_from_claims_mock)
+        profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
+        self.assertRaises(LtiProfile.DoesNotExist, profile_get_mock)
         self.assertIsNone(result)
 
-    @patch.object(LtiProfileManager, 'get_from_claims')
+    @patch.object(LtiProfile.objects, 'get')
     @patch.object(LtiAuthenticationBackend, 'user_can_authenticate', return_value=False)
     def test_with_profile_and_user_inactive(
         self,
         user_can_authenticate_mock: MagicMock,
-        get_from_claims_mock: MagicMock,
+        profile_get_mock: MagicMock,
     ):
         """Test authentication with profile and inactive user.
 
         Args:
             user_can_authenticate_mock: Mocked User model user_can_authenticate function.
-            get_from_claims_mock: Mocked LtiProfileManager get_from_claims method.
+            profile_get_mock: Mocked LtiProfile.objects get method.
         """
         result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
 
-        get_from_claims_mock.assert_called_once_with(iss=ISS, aud=AUD, sub=SUB)
-        user_can_authenticate_mock.assert_called_once_with(get_from_claims_mock().user)
+        profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
+        user_can_authenticate_mock.assert_called_once_with(profile_get_mock().user)
         self.assertIsNone(result)
 
     @override_settings(AUTHENTICATION_BACKENDS=['django.contrib.auth.backends.ModelBackend'])

@@ -13,3 +13,7 @@ ALLOW_COMPLETE_COURSE_LAUNCH = WaffleSwitch(
 COURSE_ACCESS_CONFIGURATION = WaffleSwitch(
     f'{WAFFLE_NAMESPACE}.course_access_configuration', __name__,
 )
+
+SAVE_PII_DATA = WaffleSwitch(
+    f'{WAFFLE_NAMESPACE}.save_pii_data', __name__,
+)
