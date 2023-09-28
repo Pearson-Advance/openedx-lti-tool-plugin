@@ -1,5 +1,5 @@
 """Tests for openedx_lti_tool_plugin.views.LtiToolLaunchView."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from ddt import data, ddt
 from django.test import TestCase
@@ -8,6 +8,7 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.exception import LtiException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as App
+from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment_exception
 from openedx_lti_tool_plugin.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.models import LtiProfile
 from openedx_lti_tool_plugin.tests import AUD, COURSE_ID, ISS, SUB, USAGE_KEY
@@ -87,13 +88,13 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         """
         get_identity_claims_mock.return_value = (ISS, AUD, SUB, PII)
         get_resource_launch_mock.return_value = (
-            MagicMock(),
+            response_mock := MagicMock(),
             COURSE_ID,
         )
         request = self.factory.post(self.url)
         request.user = self.user
 
-        self.view_class.as_view()(request, COURSE_ID)
+        response = self.view_class.as_view()(request, COURSE_ID)
 
         message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         get_launch_data_mock.assert_called_once_with(message_launch_mock())
@@ -111,6 +112,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
             get_lti_profile_mock(),
             COURSE_ID,
         )
+        self.assertEqual(response, response_mock)
 
     def test_post_with_unit_or_component_launch(
         self,
@@ -147,13 +149,13 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         """
         get_identity_claims_mock.return_value = (ISS, AUD, SUB, PII)
         get_resource_launch_mock.return_value = (
-            MagicMock(),
+            response_mock := MagicMock(),
             USAGE_KEY,
         )
         request = self.factory.post(self.url)
         request.user = self.user
 
-        self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
+        response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
 
         message_launch_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
         get_launch_data_mock.assert_called_once_with(message_launch_mock())
@@ -169,11 +171,14 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
             message_launch_mock(),
             get_launch_data_mock(),
             get_lti_profile_mock(),
-            USAGE_KEY
+            USAGE_KEY,
         )
+        self.assertEqual(response, response_mock)
 
-    def test_post_no_resource_launch(
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_post_without_resource_launch(
         self,
+        gettext_mock: MagicMock,
         course_key_mock: MagicMock,  # pylint: disable=unused-argument
         tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
         tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
@@ -187,9 +192,10 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
         message_launch_mock: MagicMock,
     ):
-        """Test POST request when is not resource link.
+        """Test POST request without a resource launch.
 
         Args:
+            gettext_mock: Mocked gettext object.
             course_key_mock: Mocked 'from_string' method of CourseKey.
             tool_storage_mock: Mocked 'DjangoCacheDataStorage' class.
             tool_conf_mock: Mocked 'DjangoDbToolConf' class.
@@ -214,7 +220,61 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
 
         get_resource_launch_mock.assert_not_called()
         handle_ags_mock.assert_not_called()
+        gettext_mock.assert_has_calls(
+            [
+                call('Only resource launch requests are supported.'),
+                call(f'LTI 1.3 Launch failed: {gettext_mock.return_value}'),
+            ],
+            any_order=True,
+        )
         self.assertEqual(response.status_code, 400)
+
+    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_post_returns_404_when_launch_exception_raised(
+        self,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
+        course_key_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        get_resource_launch_mock: MagicMock,  # pylint: disable=unused-argument
+        handle_ags_mock: MagicMock,  # pylint: disable=unused-argument
+        enroll_mock: MagicMock,  # pylint: disable=unused-argument
+        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
+        get_lti_profile_mock: MagicMock,  # pylint: disable=unused-argument
+        check_course_access_permission_mock: MagicMock,  # pylint: disable=unused-argument
+        get_identity_claims_mock: MagicMock,  # pylint: disable=unused-argument
+        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        message_launch_mock: MagicMock,
+    ):
+        """Test POST request without a resource launch.
+
+        Args:
+            gettext_mock: Mocked gettext object.
+            course_key_mock: Mocked 'from_string' method of CourseKey.
+            tool_storage_mock: Mocked 'DjangoCacheDataStorage' class.
+            tool_conf_mock: Mocked 'DjangoDbToolConf' class.
+            get_resource_launch_mock: Mocked 'get_resource_launch' method.
+            handle_ags_mock: Mocked 'handle_ags' method.
+            get_unit_component_launch_response_mock: Mocked 'get_unit_component_launch_response' method.
+            get_course_launch_response_mock: Mocked 'get_course_launch_response' method.
+            enroll_mock: Mocked 'enroll' method.
+            authenticate_and_login_mock: Mocked 'authenticate_and_login' method.
+            get_lti_profile_mock: Mocked 'get_lti_profile' method.
+            check_course_access_permission_mock: Mocked 'check_course_access_permission' method.
+            get_identity_claims_mock: Mocked 'get_identity_claims' method.
+            get_launch_data_mock: Mocked 'get_launch_data' method.
+            message_launch_mock: Mocked 'DjangoMessageLaunch' class.
+        """
+        message_launch_mock.side_effect = LtiToolLaunchException('Error message')
+        request = self.factory.post(self.url)
+        request.user = self.user
+
+        response = self.view_class.as_view()(request, COURSE_ID, USAGE_KEY)
+
+        gettext_mock.assert_called_once_with('LTI 1.3 Launch failed: Error message')
+        self.assertEqual(response, logged_http_response_bad_request_mock())
 
 
 class TestLtiToolLaunchViewGetLaunchData(TestLtiToolLaunchViewBase):
@@ -228,14 +288,20 @@ class TestLtiToolLaunchViewGetLaunchData(TestLtiToolLaunchViewBase):
 
         launch_message_mock.get_launch_data.assert_called_once_with()
 
-    def test_get_launch_data_raises_exception(self):
-        """Test LtiToolLaunchView get_launch_data method raises exception when LtiException is catched."""
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_get_launch_data_raises_exception(self, gettext_mock: MagicMock):
+        """Test LtiToolLaunchView get_launch_data method raises exception when LtiException is catched.
+
+        Args:
+            gettext_mock: Mocked gettext object.
+        """
         launch_message_mock = MagicMock(
             get_launch_data=MagicMock(side_effect=LtiException),
         )
 
         with self.assertRaises(LtiToolLaunchException):
             self.view_class().get_launch_data(launch_message_mock)
+        gettext_mock.assert_called_once_with('Launch message validation failed: ')
 
 
 @patch('openedx_lti_tool_plugin.views.SAVE_PII_DATA')
@@ -377,8 +443,10 @@ class TestLtiToolLaunchViewCheckCourseAccessPermission(TestLtiToolLaunchViewBase
         course_access_configuration_mock.objects.filter.return_value.first.assert_not_called()
         course_access_conf_queryset_mock.is_course_id_allowed.assert_not_called()
 
+    @patch('openedx_lti_tool_plugin.views._')
     def test_check_course_access_permission_with_course_access_config_not_found(
         self,
+        gettext_mock: MagicMock,
         course_access_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
@@ -386,6 +454,7 @@ class TestLtiToolLaunchViewCheckCourseAccessPermission(TestLtiToolLaunchViewBase
         """Test the `check_course_access_permission` method when the course access config is not found.
 
         Args:
+            gettext_mock: Mocked gettext object.
             course_access_configuration_mock: Mocked CourseAccessConfiguration Model.
             tool_config_mock: Mocked tool_config attribute of LtiToolLaunchView.
             course_access_configuration_switch_mock: Mocked COURSE_ACCESS_CONFIGURATION waffle switch.
@@ -393,15 +462,16 @@ class TestLtiToolLaunchViewCheckCourseAccessPermission(TestLtiToolLaunchViewBase
         course_access_configuration_switch_mock.is_enabled.return_value = True
         course_access_configuration_mock.objects.filter.return_value.first.return_value = None
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().check_course_access_permission(COURSE_ID, ISS, AUD)
-        self.assertEqual(
-            str(ex.exception),
+        gettext_mock.assert_called_once_with(
             f'Course access configuration for {tool_config_mock.get_lti_tool().title} not found.',
         )
 
+    @patch('openedx_lti_tool_plugin.views._')
     def test_check_course_access_permission_with_course_id_not_allowed(
         self,
+        gettext_mock: MagicMock,
         course_access_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,  # pylint: disable=unused-argument
         course_access_configuration_switch_mock: MagicMock,
@@ -409,6 +479,7 @@ class TestLtiToolLaunchViewCheckCourseAccessPermission(TestLtiToolLaunchViewBase
         """Test the `check_course_access_permission` method when the given Course ID is not allowed.
 
         Args:
+            gettext_mock: Mocked gettext object.
             course_access_configuration_mock: Mocked CourseAccessConfiguration Model.
             tool_config_mock: Mocked tool_config attribute of LtiToolLaunchView.
             course_access_configuration_switch_mock: Mocked COURSE_ACCESS_CONFIGURATION waffle switch.
@@ -421,11 +492,10 @@ class TestLtiToolLaunchViewCheckCourseAccessPermission(TestLtiToolLaunchViewBase
         )
         course_access_conf_queryset_mock.is_course_id_allowed.return_value = False
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().check_course_access_permission(COURSE_ID, ISS, AUD)
         course_access_conf_queryset_mock.is_course_id_allowed.assert_called_once_with(COURSE_ID)
-        self.assertEqual(
-            str(ex.exception),
+        gettext_mock.assert_called_once_with(
             f'Course ID {COURSE_ID} is not allowed.',
         )
 
@@ -557,6 +627,24 @@ class TestLtiToolLaunchViewEnroll(TestLtiToolLaunchViewBase):
             request=None,
         )
 
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_enroll_raises_course_enrollment_exception(
+        self,
+        gettext_mock: MagicMock,
+        course_enrollment_mock: MagicMock
+    ):
+        """Test enroll method without enrollment.
+
+        Args:
+            course_enrollment_exception_mock: Mocked course_enrollment_exception exception.
+            course_enrollment_mock: Mocked course_enrollment function.
+        """
+        course_enrollment_mock.side_effect = course_enrollment_exception()
+
+        with self.assertRaises(LtiToolLaunchException):
+            self.view_class().enroll(None, self.user, COURSE_KEY)
+        gettext_mock.assert_called_once_with('Course enrollment failed: ')
+
 
 @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
 @patch('openedx_lti_tool_plugin.views.redirect')
@@ -580,25 +668,25 @@ class TestLtiToolLaunchViewGetCourseLaunchResponse(TestLtiToolLaunchViewBase):
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
         redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
 
+    @patch('openedx_lti_tool_plugin.views._')
     def test_get_course_launch_response_with_complete_course_launch_disabled(
         self,
+        gettext_mock: MagicMock,
         redirect_mock: MagicMock,
         allow_complete_course_launch_mock: MagicMock,
     ):
         """Test the behavior of the 'get_course_launch_response' method when complete course launch is disabled.
 
         Args:
+            gettext_mock: Mocked gettext object.
             redirect_mock: Mocked redirect function.
             allow_complete_course_launch_mock: Mocked 'allow_complete_course_launch' configuration.
         """
         allow_complete_course_launch_mock.is_enabled.return_value = False
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().get_course_launch_response(COURSE_ID)
-        self.assertEqual(
-            str(ex.exception),
-            'Complete course launches are not enabled.',
-        )
+        gettext_mock.assert_called_once_with('Complete course launches are not enabled.')
         redirect_mock.assert_not_called()
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
 
@@ -635,37 +723,40 @@ class TestLtiToolLaunchViewGetUnitComponentLaunchResponse(TestLtiToolLaunchViewB
         usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
         redirect_mock.assert_called_once_with(f'{App.name}:lti-xblock', USAGE_KEY)
 
+    @patch('openedx_lti_tool_plugin.views._')
     def test_get_unit_component_launch_response_with_unit_external_to_course(
         self,
+        gettext_mock: MagicMock,
         usage_key_mock: MagicMock,
         redirect_mock: MagicMock,
     ):
         """Test 'get_unit_component_launch_response' method with a unit external to course.
 
         Args:
+            gettext_mock: Mocked gettext object.
             usage_key_mock: Mocked usage_key object for generating test data.
             redirect_mock: Mocked redirect function for testing redirection.
         """
         usage_key_mock.from_string.return_value = MagicMock(course_key='different-course-id')
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().get_unit_component_launch_response(USAGE_KEY, COURSE_ID)
-        self.assertEqual(
-            str(ex.exception),
-            'Unit/component does not belong to course.',
-        )
+        gettext_mock.assert_called_once_with('Unit/component does not belong to course.')
         redirect_mock.assert_not_called()
 
     @data('sequential', 'chapter')
+    @patch('openedx_lti_tool_plugin.views._')
     def test_get_unit_component_launch_response_with_wrong_block_type(
         self,
         block_type: str,
+        gettext_mock: MagicMock,
         usage_key_mock: MagicMock,
         redirect_mock: MagicMock,
     ):
         """Test 'get_unit_component_launch_response' method with wrong block types.
 
         Args:
+            gettext_mock: Mocked gettext object.
             block_type: The XBlock type to be tested.
             usage_key_mock: Mocked usage_key object for generating test data.
             redirect_mock: Mocked redirect function for testing redirection.
@@ -675,12 +766,9 @@ class TestLtiToolLaunchViewGetUnitComponentLaunchResponse(TestLtiToolLaunchViewB
             block_type=block_type,
         )
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().get_unit_component_launch_response(USAGE_KEY, COURSE_ID)
-        self.assertEqual(
-            str(ex.exception),
-            f'Invalid XBlock type: {block_type}',
-        )
+        gettext_mock.assert_called_once_with(f'Invalid XBlock type: {block_type}')
         redirect_mock.assert_not_called()
 
 
@@ -714,10 +802,12 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
         )
         launch_message.has_ags.assert_called_once_with()
 
-    def test_handle_ags_without_lineitem(self, lti_graded_resource_mock: MagicMock):
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_handle_ags_without_lineitem(self, gettext_mock: MagicMock, lti_graded_resource_mock: MagicMock):
         """Test the 'handle_ags' method when AGS lineitem is missing.
 
         Args:
+            gettext_mock: Mocked gettext object.
             lti_graded_resource_mock: Mocked lti_graded_resource object.
         """
         launch_message = MagicMock()
@@ -728,23 +818,22 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             },
         }
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().handle_ags(
                 launch_message,
                 launch_data,
                 LTI_PROFILE,
                 COURSE_ID,
             )
-        self.assertEqual(
-            str(ex.exception),
-            'Missing AGS lineitem.',
-        )
+        gettext_mock.assert_called_once_with('Missing AGS lineitem.')
         lti_graded_resource_mock.objects.get_or_create.assert_not_called()
 
-    def test_handle_ags_without_scope(self, lti_graded_resource_mock: MagicMock):
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_handle_ags_without_scope(self, gettext_mock: MagicMock, lti_graded_resource_mock: MagicMock):
         """Test the 'handle_ags' method when AGS scope is missing.
 
         Args:
+            gettext_mock: Mocked gettext object.
             lti_graded_resource_mock: Mocked lti_graded_resource object.
         """
         launch_message = MagicMock()
@@ -755,17 +844,14 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             },
         }
 
-        with self.assertRaises(LtiToolLaunchException) as ex:
+        with self.assertRaises(LtiToolLaunchException):
             self.view_class().handle_ags(
                 launch_message,
                 launch_data,
                 LTI_PROFILE,
                 COURSE_ID,
             )
-        self.assertEqual(
-            str(ex.exception),
-            f'Missing required AGS scope: {AGS_SCORE_SCOPE}',
-        )
+        gettext_mock.assert_called_once_with(f'Missing required AGS scope: {AGS_SCORE_SCOPE}')
         lti_graded_resource_mock.objects.get_or_create.assert_not_called()
 
 

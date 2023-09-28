@@ -9,7 +9,7 @@ from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpRespon
 from django.http.request import HttpRequest
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateResponseMixin, View
@@ -213,10 +213,10 @@ class LtiToolLaunchView(LtiToolBaseView):
         ).first()
 
         if not course_access_config:
-            raise LtiToolLaunchException(f'Course access configuration for {lti_tool_config.title} not found.')
+            raise LtiToolLaunchException(_(f'Course access configuration for {lti_tool_config.title} not found.'))
 
         if not course_access_config.is_course_id_allowed(course_id):
-            raise LtiToolLaunchException(f'Course ID {course_id} is not allowed.')
+            raise LtiToolLaunchException(_(f'Course ID {course_id} is not allowed.'))
 
     def get_lti_profile(
         self,
@@ -334,7 +334,7 @@ class LtiToolLaunchView(LtiToolBaseView):
         if str(usage_key.course_key) != course_id:
             raise LtiToolLaunchException(_('Unit/component does not belong to course.'))
 
-        if usage_key.block_type in ['chapter', 'sequential']:
+        if usage_key.block_type in ['chapter', 'sequential', 'course']:
             raise LtiToolLaunchException(_(f'Invalid XBlock type: {usage_key.block_type}'))
 
         return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
@@ -459,7 +459,7 @@ class LtiToolLaunchView(LtiToolBaseView):
 
                 return resource_response
 
-            raise LtiToolLaunchException(_('Only resource link launch request are supported.'))
+            raise LtiToolLaunchException(_('Only resource launch requests are supported.'))
         except LtiToolLaunchException as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Launch failed: {exc}'))
 

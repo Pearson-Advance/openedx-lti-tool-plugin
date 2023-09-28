@@ -12,36 +12,36 @@ class TestLoggedHttpResponseBadRequest(TestCase):
     """Test LoggedHttpResponseBadRequest class."""
 
     @log_capture()
-    @patch('openedx_lti_tool_plugin.http.hasattr', return_value=True)
+    @patch('openedx_lti_tool_plugin.http.isinstance', return_value=True)
     def test_response_with_string_message(
         self,
-        hasattr_mock: MagicMock,
+        isinstance_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test response with string message argument.
 
         Args:
-            hasattr_mock: Mocked hasattr function.
+            isinstance_mock: Mocked isinstance function.
             log: LogCapture fixture.
         """
         message = 'random-error'
         response = LoggedHttpResponseBadRequest(message)
 
         self.assertEqual(response.content.decode('utf-8'), message)
-        hasattr_mock.assert_called_once_with()
+        isinstance_mock.assert_called_once_with(message, str)
         log.check(('openedx_lti_tool_plugin.http', 'ERROR', message))
 
     @log_capture()
-    @patch('openedx_lti_tool_plugin.http.hasattr', return_value=False)
+    @patch('openedx_lti_tool_plugin.http.isinstance', return_value=False)
     def test_response_without_string_message(
         self,
-        hasattr_mock: MagicMock,
+        isinstance_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test response without string message argument.
 
         Args:
-            hasattr_mock: Mocked hasattr function.
+            isinstance_mock: Mocked isinstance function.
             log: LogCapture fixture.
         """
         message = None
