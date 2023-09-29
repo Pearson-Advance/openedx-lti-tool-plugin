@@ -156,6 +156,61 @@ class LtiToolLoginView(LtiToolBaseView):
 class LtiToolLaunchView(LtiToolBaseView):
     """LTI 1.3 platform tool launch view."""
 
+    def post(
+        self,
+        request: HttpRequest,
+        course_id: str,
+        usage_key_string: str = '',
+    ) -> Union[HttpResponse, LoggedHttpResponseBadRequest]:
+        """Process LTI 1.3 platform launch requests.
+
+        If the usage_key_string param is present, returns an LTI launch of the unit/component
+        associated with the Usage Key, otherwise it returns the launch for the whole course.
+
+        Args:
+            request: HTTP request object.
+            course_id: Course ID string.
+            usage_key_string: Usage key of the component or unit.
+
+        Returns:
+            HTTP response with LTI launch content or HTTP 400 response.
+        """
+        try:
+            # Get LTI 1.3 launch message and validate required request data.
+            launch_message = DjangoMessageLaunch(
+                request,
+                self.tool_config,
+                launch_data_storage=self.tool_storage,
+            )
+            launch_data = self.get_launch_data(launch_message)
+            iss, aud, sub, pii = self.get_identity_claims(launch_data)
+
+            # Validate if LTI tool has access to course.
+            self.check_course_access_permission(course_id, iss, aud)
+
+            # Process LTI profile.
+            lti_profile = self.get_lti_profile(iss, aud, sub, pii)
+
+            # Authenticate and login LTI profile user.
+            edx_user = self.authenticate_and_login(request, iss, aud, sub)
+
+            # Enroll user.
+            self.enroll(request, edx_user, CourseKey.from_string(course_id))
+
+            # Handle resource launch.
+            if launch_message.is_resource_launch():
+                resource_response, context_key = self.get_resource_launch(
+                    course_id,
+                    usage_key_string,
+                )
+                self.handle_ags(launch_message, launch_data, lti_profile, context_key)
+
+                return resource_response
+
+            raise LtiToolLaunchException(_('Only resource launch requests are supported.'))
+        except LtiToolLaunchException as exc:
+            return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Launch failed: {exc}'))
+
     def get_launch_data(self, launch_message: DjangoMessageLaunch) -> dict:
         """Get LTI launch data from message.
 
@@ -407,61 +462,6 @@ class LtiToolLaunchView(LtiToolBaseView):
             response = self.get_unit_component_launch_response(usage_key_string, course_id)
 
         return response, context_key
-
-    def post(
-        self,
-        request: HttpRequest,
-        course_id: str,
-        usage_key_string: str = '',
-    ) -> Union[HttpResponse, LoggedHttpResponseBadRequest]:
-        """Process LTI 1.3 platform launch requests.
-
-        If the usage_key_string param is present, returns an LTI launch of the unit/component
-        associated with the Usage Key, otherwise it returns the launch for the whole course.
-
-        Args:
-            request: HTTP request object.
-            course_id: Course ID string.
-            usage_key_string: Usage key of the component or unit.
-
-        Returns:
-            HTTP response with LTI launch content or HTTP 400 response.
-        """
-        try:
-            # Get LTI 1.3 launch message and validate required request data.
-            launch_message = DjangoMessageLaunch(
-                request,
-                self.tool_config,
-                launch_data_storage=self.tool_storage,
-            )
-            launch_data = self.get_launch_data(launch_message)
-            iss, aud, sub, pii = self.get_identity_claims(launch_data)
-
-            # Validate if LTI tool has access to course.
-            self.check_course_access_permission(course_id, iss, aud)
-
-            # Process LTI profile.
-            lti_profile = self.get_lti_profile(iss, aud, sub, pii)
-
-            # Authenticate and login LTI profile user.
-            edx_user = self.authenticate_and_login(request, iss, aud, sub)
-
-            # Enroll user.
-            self.enroll(request, edx_user, CourseKey.from_string(course_id))
-
-            # Handle resource launch.
-            if launch_message.is_resource_launch():
-                resource_response, context_key = self.get_resource_launch(
-                    course_id,
-                    usage_key_string,
-                )
-                self.handle_ags(launch_message, launch_data, lti_profile, context_key)
-
-                return resource_response
-
-            raise LtiToolLaunchException(_('Only resource launch requests are supported.'))
-        except LtiToolLaunchException as exc:
-            return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Launch failed: {exc}'))
 
 
 class LtiToolJwksView(LtiToolBaseView):

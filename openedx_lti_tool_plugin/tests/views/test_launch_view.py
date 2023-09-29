@@ -333,9 +333,8 @@ class TestLtiToolLaunchViewGetIdentityClaims(TestLtiToolLaunchViewBase):
                 get_client_id_mock.return_value,
                 launch_data_mock.get('sub'),
                 get_pii_from_claims_mock.return_value,
-            )
+            ),
         )
-
         launch_data_mock.get.assert_called()
         get_client_id_mock.assert_called_once_with(
             launch_data_mock.get('aud'),
@@ -367,7 +366,7 @@ class TestLtiToolLaunchViewGetIdentityClaims(TestLtiToolLaunchViewBase):
                 get_client_id_mock.return_value,
                 launch_data_mock.get('sub'),
                 {},
-            )
+            ),
         )
 
         get_client_id_mock.assert_called_once_with(
@@ -744,7 +743,7 @@ class TestLtiToolLaunchViewGetUnitComponentLaunchResponse(TestLtiToolLaunchViewB
         gettext_mock.assert_called_once_with('Unit/component does not belong to course.')
         redirect_mock.assert_not_called()
 
-    @data('sequential', 'chapter')
+    @data('sequential', 'chapter', 'course')
     @patch('openedx_lti_tool_plugin.views._')
     def test_get_unit_component_launch_response_with_wrong_block_type(
         self,
@@ -801,6 +800,38 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             lti_graded_resource_mock.objects.get_or_create.return_value,
         )
         launch_message.has_ags.assert_called_once_with()
+        lti_graded_resource_mock.objects.get_or_create.assert_called_once_with(
+            lti_profile=LTI_PROFILE,
+            context_key=COURSE_ID,
+            lineitem='random-lineitem',
+        )
+
+    def test_handle_ags_without_ags_in_launch(self, lti_graded_resource_mock: MagicMock):
+        """Test the 'handle_ags' method when the launch message doesn't contain AGS data.
+
+        Args:
+            lti_graded_resource_mock: Mocked lti_graded_resource object.
+        """
+        launch_message = MagicMock()
+        launch_message.has_ags.return_value = False
+        launch_data = {
+            AGS_CLAIM_ENDPOINT: {
+                'lineitem': 'random-lineitem',
+                'scope': [AGS_SCORE_SCOPE],
+            },
+        }
+
+        self.assertEqual(
+            self.view_class().handle_ags(
+                launch_message,
+                launch_data,
+                LTI_PROFILE,
+                COURSE_ID,
+            ),
+            None,
+        )
+        launch_message.has_ags.assert_called_once_with()
+        lti_graded_resource_mock.assert_not_called()
 
     @patch('openedx_lti_tool_plugin.views._')
     def test_handle_ags_without_lineitem(self, gettext_mock: MagicMock, lti_graded_resource_mock: MagicMock):
