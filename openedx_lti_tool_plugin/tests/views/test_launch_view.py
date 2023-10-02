@@ -231,7 +231,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
 
     @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
     @patch('openedx_lti_tool_plugin.views._')
-    def test_post_returns_404_when_launch_exception_raised(
+    def test_post_returns_400_when_launch_exception_raised(
         self,
         gettext_mock: MagicMock,
         logged_http_response_bad_request_mock: MagicMock,
@@ -248,7 +248,7 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
         message_launch_mock: MagicMock,
     ):
-        """Test POST request without a resource launch.
+        """Test POST request raises LoggedHttpResponseBadRequest when LtiToolLaunchException is catched.
 
         Args:
             gettext_mock: Mocked gettext object.
