@@ -16,6 +16,21 @@ Unreleased
 
 *
 
+0.0.6 - 2023-10-02
+********************
+
+Added
+=====
+
+- Add PII field to LtiProfile model.
+- Add mechanism to save PII data to LtiProfile on LTI launch.
+
+Changed
+=======
+
+- Improved LTI launch error log and response messages.
+- Improve LTI launch view class.
+
 0.0.5 - 2023-09-04
 ********************
 
@@ -106,7 +121,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.5...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.6
 [0.0.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.5
 [0.0.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.4
 [0.0.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.3
