@@ -5,6 +5,7 @@ from typing import Any, Callable, Optional, Tuple, TypeVar, Union
 from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.http.request import HttpRequest
 from django.shortcuts import redirect
@@ -394,16 +395,16 @@ class LtiToolLaunchView(LtiToolBaseView):
 
         return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
 
-    def handle_ags(
+    def handle_ags(  # pylint: disable=inconsistent-return-statements
         self,
         launch_message: DjangoMessageLaunch,
         launch_data: dict,
         lti_profile: LtiProfile,
         context_key: str,
-    ) -> Optional[Tuple[LtiGradedResource, bool]]:
+    ):
         """Handle launch AGS (Assignment and Grade Services).
 
-        Gets or creates a LtiGradedResource instance associated to the launch.
+        Creates a LtiGradedResource instance associated to the launch if not exists.
 
         Args:
             launch_message: Message object of the launch.
@@ -429,11 +430,14 @@ class LtiToolLaunchView(LtiToolBaseView):
         if AGS_SCORE_SCOPE not in ags_endpoint.get('scope', []):
             raise LtiToolLaunchException(_(f'Missing required AGS scope: {AGS_SCORE_SCOPE}'))
 
-        return LtiGradedResource.objects.get_or_create(
-            lti_profile=lti_profile,
-            context_key=context_key,
-            lineitem=lineitem,
-        )
+        try:
+            LtiGradedResource.objects.get_or_create(
+                lti_profile=lti_profile,
+                context_key=context_key,
+                lineitem=lineitem,
+            )
+        except ValidationError as exc:
+            raise LtiToolLaunchException(_(exc.messages[0])) from exc
 
     def get_resource_launch(
         self,
