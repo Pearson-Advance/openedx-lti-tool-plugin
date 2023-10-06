@@ -137,3 +137,33 @@ There is also the possibility of modifying specific components of the learning
 MFE so they aren't rendered to LTI users, there is still no clear approach on
 how this could be achieved without major modifications and which components
 that are available for students we might want to hide from LTI users.
+
+2.1. Modify launch view
+=======================
+
+- Obtain the learning MFE URL from the LEARNING_MICROFRONTEND_URL setting
+  using the edx-platform configuration helper function.
+- Modify the get_course_launch_response to return a redirect response
+  to the learning MFE course home view.
+
+We need to also modify the way the login mechanism is implemented, currently
+when the LTI tool plugin is accessed from a site URL instead of the main URL
+the auto-generated user is not authenticated to the learning MFE. How we can
+fix this is still not clear.
+
+2.2. Modify the LTI middleware
+==============================
+
+We should modify the current implemented LTI middleware URL patterns to allow
+all the API endpoints currently in use by the learning MFE. The middleware
+rules should also be modified to disallow access to the profile, account, or
+dashboard views.
+
+2.3. Hide header dropdown items
+===============================
+
+We could hide items from the header dropdown (profile, account, dashboard) by
+creating a new component on the openedx/frontend-component-header that will
+replace the dropdown rendered when the user is authenticated if the username
+contains the LTI tool plugin app name. We could also just apply this condition
+to each specific element instead of creating a whole new dropdown.
