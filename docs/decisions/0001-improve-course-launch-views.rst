@@ -119,11 +119,11 @@ available.
 Another approach that was briefly considered on a previous ADR for the initial
 implementation for the LTI tool plugin course launch feature is the
 possibility of using the learning MFE on LTI course launches, with this
-approach we will remove the currently implemented middleware and courseware
-views and simply allow the user to navigate across the course like any other
-student user does, currently the auto-generated user for LTI launches only have
-the regular permissions of a student user, this means that an LTI user has the
-same permissions on the LMS or learning MFE, a regular user has.
+approach we will remove the currently implemented courseware views and simply
+allow the user to navigate across the course like any other student user does,
+currently the auto-generated user for LTI launches only have the regular
+permissions of a student user, this means that an LTI user has the same
+permissions on the LMS or learning MFE, a regular user has.
 
 The disadvantage of this approach is that we lose a more strict access control
 to course resources on LTI course launches, another disadvantage is that if the
