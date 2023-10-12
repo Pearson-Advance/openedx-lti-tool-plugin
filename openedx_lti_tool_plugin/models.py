@@ -13,7 +13,6 @@ from django.db import models, transaction
 from django.db.models import QuerySet
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
-from opaque_keys.edx.django.models import LearningContextKeyField
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoMessageLaunch
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
@@ -22,6 +21,7 @@ from pylti1p3.grade import Grade
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
 from openedx_lti_tool_plugin.utils import get_pii_from_claims
+from openedx_lti_tool_plugin.validators import validate_context_key
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 
@@ -241,9 +241,10 @@ class LtiGradedResource(models.Model):
         related_name='openedx_lti_tool_plugin_graded_resource',
         help_text=_('The LTI profile that launched the resource.'),
     )
-    context_key = LearningContextKeyField(
+    context_key = models.CharField(
         max_length=255,
         help_text=_('The opaque key string of the resource.'),
+        validators=[validate_context_key],
     )
     lineitem = models.URLField(
         max_length=255,
@@ -307,3 +308,15 @@ class LtiGradedResource(models.Model):
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
         return f'<LtiGradedResource, ID: {self.id}>'
+
+    def save(self, *args: tuple, **kwargs: dict):
+        """Model save method.
+
+        In this method we run field validators.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)

@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock, call, patch
 
 from ddt import data, ddt
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from opaque_keys.edx.keys import CourseKey
@@ -775,8 +776,8 @@ class TestLtiToolLaunchViewGetUnitComponentLaunchResponse(TestLtiToolLaunchViewB
 class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
     """Testcase for LtiToolLaunchView handle_ags method."""
 
-    def test_handle_ags(self, lti_graded_resource_mock: MagicMock):
-        """Test the 'handle_ags' method when the launch message contains AGS data.
+    def test_handle_ags_with_existent_resource(self, lti_graded_resource_mock: MagicMock):
+        """Test the 'handle_ags' method.
 
         Args:
             lti_graded_resource_mock: Mocked lti_graded_resource object.
@@ -790,14 +791,11 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             },
         }
 
-        self.assertEqual(
-            self.view_class().handle_ags(
-                launch_message,
-                launch_data,
-                LTI_PROFILE,
-                COURSE_ID,
-            ),
-            lti_graded_resource_mock.objects.get_or_create.return_value,
+        self.view_class().handle_ags(
+            launch_message,
+            launch_data,
+            LTI_PROFILE,
+            COURSE_ID,
         )
         launch_message.has_ags.assert_called_once_with()
         lti_graded_resource_mock.objects.get_or_create.assert_called_once_with(
@@ -805,6 +803,45 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             context_key=COURSE_ID,
             lineitem='random-lineitem',
         )
+
+    @patch('openedx_lti_tool_plugin.views._')
+    def test_handle_ags_raises_validation_on_create(
+        self,
+        gettext_mock: MagicMock,
+        lti_graded_resource_mock: MagicMock,
+    ):
+        """Test the 'handle_ags' method raises a validation error when cleaning instance.
+
+        Args:
+            gettext_mock: Mocked gettext object.
+            lti_graded_resource_mock: Mocked lti_graded_resource object.
+        """
+        val_error = ValidationError(None, None)
+        launch_message = MagicMock()
+        launch_message.has_ags.return_value = True
+        launch_data = {
+            AGS_CLAIM_ENDPOINT: {
+                'lineitem': 'random-lineitem',
+                'scope': [AGS_SCORE_SCOPE],
+            },
+        }
+        lti_graded_resource_mock.objects.get_or_create.side_effect = val_error
+
+        with self.assertRaises(LtiToolLaunchException):
+            self.view_class().handle_ags(
+                launch_message,
+                launch_data,
+                LTI_PROFILE,
+                COURSE_ID,
+            )
+
+        launch_message.has_ags.assert_called_once_with()
+        lti_graded_resource_mock.objects.get_or_create.assert_called_once_with(
+            lti_profile=LTI_PROFILE,
+            context_key=COURSE_ID,
+            lineitem='random-lineitem',
+        )
+        gettext_mock.assert_called_once_with(val_error.messages[0])
 
     def test_handle_ags_without_ags_in_launch(self, lti_graded_resource_mock: MagicMock):
         """Test the 'handle_ags' method when the launch message doesn't contain AGS data.
@@ -821,17 +858,16 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
             },
         }
 
-        self.assertEqual(
-            self.view_class().handle_ags(
-                launch_message,
-                launch_data,
-                LTI_PROFILE,
-                COURSE_ID,
-            ),
-            None,
+        self.view_class().handle_ags(
+            launch_message,
+            launch_data,
+            LTI_PROFILE,
+            COURSE_ID,
         )
+
         launch_message.has_ags.assert_called_once_with()
-        lti_graded_resource_mock.assert_not_called()
+        lti_graded_resource_mock.objects.filter.assert_not_called()
+        lti_graded_resource_mock.objects.filter.return_value.first.assert_not_called()
 
     @patch('openedx_lti_tool_plugin.views._')
     def test_handle_ags_without_lineitem(self, gettext_mock: MagicMock, lti_graded_resource_mock: MagicMock):
@@ -857,7 +893,8 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
                 COURSE_ID,
             )
         gettext_mock.assert_called_once_with('Missing AGS lineitem.')
-        lti_graded_resource_mock.objects.get_or_create.assert_not_called()
+        lti_graded_resource_mock.objects.filter.assert_not_called()
+        lti_graded_resource_mock.objects.filter.return_value.first.assert_not_called()
 
     @patch('openedx_lti_tool_plugin.views._')
     def test_handle_ags_without_scope(self, gettext_mock: MagicMock, lti_graded_resource_mock: MagicMock):
@@ -883,7 +920,8 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
                 COURSE_ID,
             )
         gettext_mock.assert_called_once_with(f'Missing required AGS scope: {AGS_SCORE_SCOPE}')
-        lti_graded_resource_mock.objects.get_or_create.assert_not_called()
+        lti_graded_resource_mock.objects.filter.assert_not_called()
+        lti_graded_resource_mock.objects.filter.return_value.first.assert_not_called()
 
 
 class TestLtiToolLaunchViewGetResourceLaunch(TestLtiToolLaunchViewBase):

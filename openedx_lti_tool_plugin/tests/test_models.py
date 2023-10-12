@@ -381,7 +381,7 @@ class TestLtiGradedResource(LtiProfileMixin, TestCase):
         self.lti_graded_resource = LtiGradedResource.objects.create(
             lti_profile=self.profile,
             context_key='course-v1:test+test+test',
-            lineitem='random-lineitem'
+            lineitem='https://random-lineitem.test',
         )
 
     @patch('openedx_lti_tool_plugin.models.Grade')
@@ -413,7 +413,7 @@ class TestLtiGradedResource(LtiProfileMixin, TestCase):
                 'iss': self.profile.platform_id,
                 'aud': self.profile.client_id,
                 'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint': {
-                    'lineitem': 'random-lineitem',
+                    'lineitem': 'https://random-lineitem.test',
                     'scope': {
                         'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem',
                         'https://purl.imsglobal.org/spec/lti-ags/scope/score',
@@ -436,3 +436,14 @@ class TestLtiGradedResource(LtiProfileMixin, TestCase):
     def test_str_method(self):
         """Test __str__ method return value."""
         self.assertEqual(str(self.lti_graded_resource), f'<LtiGradedResource, ID: {self.lti_graded_resource.id}>')
+
+    @patch.object(LtiGradedResource, 'full_clean')
+    def test_save(self, full_clean_mock: MagicMock):
+        """Test save method."""
+        LtiGradedResource(
+            lti_profile=self.profile,
+            context_key='course-v1:test+test+test',
+            lineitem='https://random-lineitem2.test',
+        ).save()
+
+        full_clean_mock.assert_called_once_with()
