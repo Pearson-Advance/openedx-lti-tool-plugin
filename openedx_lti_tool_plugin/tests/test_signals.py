@@ -6,7 +6,13 @@ from django.test import TestCase, override_settings
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource
-from openedx_lti_tool_plugin.signals import MAX_SCORE, create_course_access_configuration, update_course_score
+from openedx_lti_tool_plugin.signals import (
+    MAX_SCORE,
+    create_course_access_configuration,
+    update_course_score,
+    update_unit_or_problem_score,
+)
+from openedx_lti_tool_plugin.tests import COURSE_ID, USAGE_KEY
 
 
 class TestCreateCourseAccessConfiguration(TestCase):
@@ -172,3 +178,114 @@ class TestUpdateCourseScore(TestCase):
         all_from_user_id_mock.assert_called_once_with(user_id=self.user.id, context_key=self.course_key)
         datetime_mock.now.assert_not_called()
         self.graded_resource.update_score.assert_not_called()
+
+
+@patch('openedx_lti_tool_plugin.signals.send_vertical_score_update')
+@patch('openedx_lti_tool_plugin.signals.send_problem_score_update')
+class TestUpdateUnitOrProblem(TestCase):
+    """Test update_unit_or_problem_score signal."""
+
+    def setUp(self):
+        """Test fixtures setup."""
+        self.weighted_earned = 1
+        self.weighted_possible = 1
+        self.user_id = 1
+        self.course_id = COURSE_ID
+        self.usage_id = USAGE_KEY
+
+    @patch('openedx_lti_tool_plugin.signals.LtiProfile')
+    @patch('openedx_lti_tool_plugin.signals.settings')
+    @patch('openedx_lti_tool_plugin.signals.getattr')
+    def test_update_problem_score(
+        self,
+        getattr_mock: MagicMock,
+        settings_mock: MagicMock,
+        lti_profile_mock: MagicMock,
+        send_problem_score_update_mock: MagicMock,
+        send_vertical_score_update_mock: MagicMock,
+    ):
+        """Test signal when problem AGS score is updated.
+
+        Args:
+            getattr_mock: Mocked getattr function.
+            setting_mock: Mocked settings.
+            lti_profile_mock: Mocked LtiProfile model.
+            send_problem_score_update_mock: Mocked send_problem_score_update task.
+            send_vertical_score_update_mock: Mocked send_vertical_score_update task.
+        """
+        self.assertEqual(
+            update_unit_or_problem_score(
+                None,
+                self.weighted_earned,
+                self.weighted_possible,
+                self.user_id,
+                self.course_id,
+                self.usage_id,
+            ),
+            None,
+        )
+        getattr_mock.assert_called_once_with(settings_mock, 'OLTITP_ENABLE_LTI_TOOL', False)
+        lti_profile_mock.objects.filter.assert_called_once_with(user__id=self.user_id)
+        send_problem_score_update_mock.delay.assert_called_once_with(
+            self.weighted_earned,
+            self.weighted_possible,
+            self.user_id,
+            self.usage_id,
+        )
+        send_vertical_score_update_mock.delay.assert_called_once_with(self.user_id, self.course_id, self.usage_id)
+
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_update_problem_score_with_plugin_disabled(
+        self,
+        send_problem_score_update_mock: MagicMock,
+        send_vertical_score_update_mock: MagicMock,
+    ):
+        """Test signal when plugin is disabled.
+
+        Args:
+            send_problem_score_update_mock: Mocked send_problem_score_update task.
+            send_vertical_score_update_mock: Mocked send_vertical_score_update task.
+        """
+        self.assertEqual(
+            update_unit_or_problem_score(
+                None,
+                self.weighted_earned,
+                self.weighted_possible,
+                self.user_id,
+                self.course_id,
+                self.usage_id,
+            ),
+            None,
+        )
+        send_problem_score_update_mock.delay.assert_not_called()
+        send_vertical_score_update_mock.delay.assert_not_called()
+
+    @patch('openedx_lti_tool_plugin.signals.LtiProfile')
+    def test_update_problem_score_without_lti_profile(
+        self,
+        lti_profile_mock: MagicMock,
+        send_problem_score_update_mock: MagicMock,
+        send_vertical_score_update_mock: MagicMock,
+    ):
+        """Test signal when plugin is disabled.
+
+        Args:
+            lti_profile_mock: Mocked LtiProfile model.
+            send_problem_score_update_mock: Mocked send_problem_score_update task.
+            send_vertical_score_update_mock: Mocked send_vertical_score_update task.
+        """
+        lti_profile_mock.objects.filter.return_value = []
+
+        self.assertEqual(
+            update_unit_or_problem_score(
+                None,
+                self.weighted_earned,
+                self.weighted_possible,
+                self.user_id,
+                self.course_id,
+                self.usage_id,
+            ),
+            None,
+        )
+        send_problem_score_update_mock.delay.assert_not_called()
+        send_vertical_score_update_mock.delay.assert_not_called()

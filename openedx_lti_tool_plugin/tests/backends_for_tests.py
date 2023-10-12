@@ -65,3 +65,13 @@ def course_enrollment_backend():
 def course_enrollment_exception_backend():
     """Return CourseEnrollmentException mock function."""
     return Exception
+
+
+def problem_weighted_score_changed_backend():
+    """Return PROBLEM_WEIGHTED_SCORE_CHANGED mock function."""
+    return Mock()
+
+
+def course_grade_factory_backend():
+    """Return CourseGradeFactory mock function."""
+    return Mock()
