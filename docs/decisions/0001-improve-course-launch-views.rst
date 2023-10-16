@@ -238,3 +238,10 @@ creating a new component on the openedx/frontend-component-header that will
 replace the dropdown rendered when the user is authenticated if the username
 contains the LTI tool plugin app name. We could also just apply this condition
 to each specific element instead of creating a whole new dropdown.
+
+3. Accepted approach
+====================
+
+We will modify the LTI launch view to use the learning MFE, there is still
+no clear appraach on which components will be hidden appart from the user
+dropdown elements such has profile, account and dashboard.
