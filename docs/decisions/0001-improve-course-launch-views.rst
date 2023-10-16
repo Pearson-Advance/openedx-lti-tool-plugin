@@ -143,23 +143,94 @@ that are available for students we might want to hide from LTI users.
 
 - Obtain the learning MFE URL from the LEARNING_MICROFRONTEND_URL setting
   using the edx-platform configuration helper function.
-- Modify the get_course_launch_response to return a redirect response
+- Modify get_course_launch_response method to return a redirect response
   to the learning MFE course home view.
-
-We need to also modify the way the login mechanism is implemented, currently
-when the LTI tool plugin is accessed from a site URL instead of the main URL
-the auto-generated user is not authenticated to the learning MFE. How we can
-fix this is still not clear.
+- Modify get_resource_launch method to use the set_logged_in_cookies function
+  from edx-platform to add the JWT session cokkies to the launch view response.
 
 2.2. Modify the LTI middleware
 ==============================
 
 We should modify the current implemented LTI middleware URL patterns to allow
-all the API endpoints currently in use by the learning MFE. The middleware
-rules should also be modified to disallow access to the profile, account, or
-dashboard views.
+all the API endpoints currently in use by the learning MFE.
 
-2.3. Hide header dropdown items
+2.3. Setup site and learning MFE to share cookies
+=================================================
+
+In order for the LTI tool plugin to work with the learning MFE on a devstack
+environment, the LMS and the learning MFE need to be setup to be able to share
+cookies across an exposed domain, this is the same domain that is used to test
+the devstack environment with saLTIre or IMS RI. This setup is required on the
+devstack enrionement because in this setup the learning MFE and LMS hostname
+are different from each other, so cookies set on the domain used for testing
+aren't set on the learning MFE since the learning MFE is not exposed and only
+setup to work from the localhost hostname. These are the required steps:
+
+1. Expose your LMS and learning MFE to an external address, they should both
+   be on the same domain (Example: lms.example.com, learning-mfe.example.com).
+2. Modify the LMS settings:
+
+.. code-block:: python
+    # Cookies settings.
+    SHARED_COOKIE_DOMAIN = ".example.com"
+
+    # MFE config API settings.
+    ENABLE_MFE_CONFIG_API = True
+    MFE_CONFIG_API_CACHE_TIMEOUT = 0
+
+3. Create a site for your external LMS address
+   (http://localhost:18000/admin/sites/site/add/).
+
+4. Create a site configuration for your site
+   (http://localhost:18000/admin/site_configuration/siteconfiguration/add/):
+
+.. code-block:: javascript
+    {
+        "SESSION_COOKIE_DOMAIN": ".example.com",
+        "LEARNING_MICROFRONTEND_URL": "https://learning-mfe.example.com",
+        "MFE_CONFIG": {
+            "LMS_BASE_URL": "https://lms,example.com",
+            "LOGIN_URL": "https://lms,example.com/login",
+            "LOGOUT_URL": "https://lms,example.com/logout",
+            "MARKETING_SITE_BASE_URL": "https://lms,example.com",
+            "BASE_URL": "lms,example.com",
+            "LEARNING_BASE_URL": "https://learning-mfe.example.com",
+            "REFRESH_ACCESS_TOKEN_ENDPOINT": "https://lms.example.com/login_refresh"
+        }
+    }
+
+5. Modify the learning MFE webpack.dev.config.js file
+  (create one if not file exists.):
+
+.. code-block:: javascript
+    const path = require('path');
+    const { createConfig } = require('@edx/frontend-build');
+
+    const config = createConfig('webpack-dev', {
+        devServer: {
+          allowedHosts: 'all',
+        },
+    });
+
+    config.resolve.modules = [
+      path.resolve(__dirname, './src'),
+      'node_modules',
+    ];
+
+    module.exports = config;
+
+6. Modify the learning MFE .env.development file and add these variables:
+
+.. code-block:: bash
+    APP_ID='learning'
+    MFE_CONFIG_API_URL='https://lms.example.com/api/mfe_config/v1'
+
+7. Login from the external LMS domain.
+8. Go to the learning MFE on it's external domain.
+9. The learning MFE should be logged in using the same cookies has the
+   external LMS domain.
+
+2.4. Hide header dropdown items
 ===============================
 
 We could hide items from the header dropdown (profile, account, dashboard) by
