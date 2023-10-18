@@ -3,14 +3,7 @@ from django.test import TestCase
 from django.urls import resolve, reverse
 
 from openedx_lti_tool_plugin.tests import COURSE_ID, USAGE_KEY
-from openedx_lti_tool_plugin.views import (
-    LtiCourseHomeView,
-    LtiCoursewareView,
-    LtiToolJwksView,
-    LtiToolLaunchView,
-    LtiToolLoginView,
-    LtiXBlockView,
-)
+from openedx_lti_tool_plugin.views import LtiToolJwksView, LtiToolLaunchView, LtiToolLoginView
 
 
 class TestUrls(TestCase):
@@ -39,25 +32,4 @@ class TestUrls(TestCase):
         self.assertEqual(
             resolve(reverse('lti1p3-pub-jwks')).func.view_class,
             LtiToolJwksView,
-        )
-
-    def test_lti_course_home_url_resolves(self):
-        """Test LtiCourseHomeView URL can be resolved."""
-        self.assertEqual(
-            resolve(reverse('lti-course-home', args=[USAGE_KEY])).func.view_class,
-            LtiCourseHomeView,
-        )
-
-    def test_lti_courseware_url_resolves(self):
-        """Test LtiCoursewareView URL can be resolved."""
-        self.assertEqual(
-            resolve(reverse('lti-courseware', args=[COURSE_ID, USAGE_KEY])).func.view_class,
-            LtiCoursewareView,
-        )
-
-    def test_lti_xblock_url_resolves(self):
-        """Test LtiXBlockView URL can be resolved."""
-        self.assertEqual(
-            resolve(reverse('lti-xblock', args=[USAGE_KEY])).func.view_class,
-            LtiXBlockView,
         )

@@ -19,19 +19,4 @@ urlpatterns = [
             name='lti1p3-launch',
         ),
     ])),
-    re_path(
-        fr'^course/{settings.COURSE_ID_PATTERN}/home$',
-        views.LtiCourseHomeView.as_view(),
-        name='lti-course-home',
-    ),
-    re_path(
-        fr'^course/{settings.COURSE_ID_PATTERN}/{settings.USAGE_KEY_PATTERN}$',
-        views.LtiCoursewareView.as_view(),
-        name='lti-courseware',
-    ),
-    re_path(
-        fr'^xblock/{settings.USAGE_KEY_PATTERN}$',
-        views.LtiXBlockView.as_view(),
-        name='lti-xblock',
-    ),
 ]

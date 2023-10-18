@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from django.conf import settings
-from django.db.models.signals import post_save
+from django.contrib.auth import get_user_model
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
@@ -19,12 +20,43 @@ from openedx_lti_tool_plugin.tasks import send_problem_score_update, send_vertic
 MAX_SCORE = 1.0
 
 
+@receiver(pre_save, sender=get_user_model(), dispatch_uid='restrict_lti_profile_user_email_address')
+def restrict_user_email_address(
+    sender: UserT,  # pylint: disable=unused-argument
+    instance: UserT,
+    **kwargs: dict,
+):
+    """Restrict LTI profile user, email address update.
+
+    This signal catches the pre-save event of any edx-platform user model instance,
+    if the user instance is of an LTI user and the user email is changed, we force
+    the email back to the LTI profile-generated email address. We do this to disallow
+    LTI users to be able to gain access to the LTI user by changing their email address.
+
+    Args:
+        sender: The model class being saved.
+        instance: The model instance being saved.
+        **kwargs: Arbitrary keyword arguments.
+    """
+    lti_profile = getattr(instance, 'openedx_lti_tool_plugin_lti_profile', None)
+
+    # Ignore created users or users without LTI profile.
+    if not instance.pk or not lti_profile:
+        return
+
+    # Set user email to LTI profile email if changed.
+    if instance.email != lti_profile.email:
+        instance.email = lti_profile.email
+
+    return
+
+
 @receiver(post_save, sender=LtiTool, dispatch_uid='create_access_configuration_on_lti_tool_creation')
 def create_course_access_configuration(
     sender: LtiTool,  # pylint: disable=unused-argument
     instance: LtiTool,
     created: bool,
-    **kwargs,
+    **kwargs: dict,
 ):
     """Create CourseAccessConfiguration instance for LtiTool.
 
@@ -45,7 +77,7 @@ def update_course_score(
     user: UserT,
     course_grade: Any,
     course_key: CourseKey,
-    **kwargs,
+    **kwargs: dict,
 ):
     """Update score for LTI graded resources with course ID as context key.
 

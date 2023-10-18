@@ -1,32 +1,30 @@
 """Views for openedx_lti_tool_plugin."""
 import logging
-from typing import Any, Callable, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Tuple, TypeVar, Union
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login
-from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.http.request import HttpRequest
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic.base import TemplateResponseMixin, View
+from django.views.generic.base import View
 from opaque_keys.edx.keys import CourseKey, UsageKey
 from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, DjangoMessageLaunch, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
-from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
-from openedx_lti_tool_plugin.edxapp_wrapper.courseware_module import render_xblock
-from openedx_lti_tool_plugin.edxapp_wrapper.modulestore_module import item_not_found_error
 from openedx_lti_tool_plugin.edxapp_wrapper.safe_sessions_module import mark_user_change_as_expected
+from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
+from openedx_lti_tool_plugin.edxapp_wrapper.user_authn_module import set_logged_in_cookies
 from openedx_lti_tool_plugin.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
-from openedx_lti_tool_plugin.utils import get_client_id, get_course_outline, get_pii_from_claims
+from openedx_lti_tool_plugin.utils import get_client_id, get_pii_from_claims
 from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION, SAVE_PII_DATA
 
 log = logging.getLogger(__name__)
@@ -60,38 +58,6 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
 @method_decorator(requires_lti_enabled, name='dispatch')
 class LtiBaseView(View):
     """Base LTI view initializing common attributes."""
-
-    def is_user_enrolled(self, edx_user: UserT, course_id: str) -> Optional[course_enrollment()]:
-        """
-        Check user is enrolled to course.
-
-        Args:
-            edx_user:  Open edX user instance.
-            course_id: course_id: Course ID string.
-
-        Returns:
-            Course enrollment model instance or None.
-        """
-        return course_enrollment().get_enrollment(edx_user, CourseKey.from_string(course_id))
-
-    def get_course_outline(self, request: HttpRequest, course_id: str) -> dict:
-        """Get course outline for user.
-
-        Args:
-            request: HTTP request object.
-            course_id: Course ID string.
-
-        Returns:
-            Course outline dictionary.
-
-        Raises:
-            Http404: Course is not found.
-        """
-        try:
-            return get_course_outline(request, course_id)
-        # Course is not found.
-        except item_not_found_error() as exc:
-            raise Http404 from exc
 
 
 class LtiToolBaseView(LtiBaseView):
@@ -201,6 +167,8 @@ class LtiToolLaunchView(LtiToolBaseView):
             # Handle resource launch.
             if launch_message.is_resource_launch():
                 resource_response, context_key = self.get_resource_launch(
+                    request,
+                    edx_user,
                     course_id,
                     usage_key_string,
                 )
@@ -362,7 +330,7 @@ class LtiToolLaunchView(LtiToolBaseView):
             course_id: Course ID string.
 
         Returns:
-            Redirect to course home view (lti-course-home url).
+            Redirect to learning MFE course URL.
 
         Raises:
             LtiToolLaunchException in case entire course launches are disabled.
@@ -370,16 +338,24 @@ class LtiToolLaunchView(LtiToolBaseView):
         if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
             raise LtiToolLaunchException(_('Complete course launches are not enabled.'))
 
-        return redirect(f'{AppConfig.name}:lti-course-home', course_id=course_id)
+        return redirect(
+            f'{configuration_helpers().get_value("LEARNING_MICROFRONTEND_URL", settings.LEARNING_MICROFRONTEND_URL)}'
+            f'/course/{course_id}'
+        )
 
-    def get_unit_component_launch_response(self, usage_key_string: str, course_id: str) -> HttpResponseRedirect:
+    def get_unit_component_launch_response(
+        self,
+        usage_key_string: str,
+        course_id: str,
+    ) -> HttpResponseRedirect:
         """Get redirect for unit/component launch.
 
         Args:
+            usage_key_string: Usage Key of a unit or component.
             course_id: Course ID string.
 
         Returns:
-            Redirect to xblock view (lti-xblock url).
+            Redirect to render xblock view.
 
         Raises:
             LtiToolLaunchException in case unit or component doesn't belong to the course or
@@ -393,7 +369,7 @@ class LtiToolLaunchView(LtiToolBaseView):
         if usage_key.block_type in ['chapter', 'sequential', 'course']:
             raise LtiToolLaunchException(_(f'Invalid XBlock type: {usage_key.block_type}'))
 
-        return redirect(f'{AppConfig.name}:lti-xblock', usage_key_string)
+        return redirect('render_xblock', usage_key_string)
 
     def handle_ags(  # pylint: disable=inconsistent-return-statements
         self,
@@ -441,6 +417,8 @@ class LtiToolLaunchView(LtiToolBaseView):
 
     def get_resource_launch(
         self,
+        request: HttpRequest,
+        edx_user: UserT,
         course_id: str,
         usage_key_string: str = '',
     ) -> Tuple[HttpResponse, str]:
@@ -449,6 +427,8 @@ class LtiToolLaunchView(LtiToolBaseView):
         Gets or creates a LtiGradedResource instance associated to the launch.
 
         Args:
+            request: HTTP request object.
+            edx_user: edX user model instance.
             course_id: Course ID string.
             usage_key_string: Usage Key of a unit or component.
 
@@ -465,7 +445,8 @@ class LtiToolLaunchView(LtiToolBaseView):
             context_key = usage_key_string
             response = self.get_unit_component_launch_response(usage_key_string, course_id)
 
-        return response, context_key
+        # Set JWT authentication cookies to launch response.
+        return set_logged_in_cookies(request, response, edx_user), context_key
 
 
 class LtiToolJwksView(LtiToolBaseView):
@@ -483,125 +464,3 @@ class LtiToolJwksView(LtiToolBaseView):
             HTTP response with public JWKS.
         """
         return JsonResponse(self.tool_config.get_jwks())
-
-
-class LtiXBlockView(LtiBaseView):
-    """LTI XBlock view."""
-
-    def get(
-        self,
-        request: HttpRequest,
-        usage_key_string: str,
-    ) -> HttpResponse:
-        """Render XBlock view.
-
-        Returns an XBlock using render_xblock view.
-
-        Args:
-            request: HTTP request object.
-            usage_key_string: Usage key string.
-
-        Returns:
-            HTTP response with rendered LTI courseware view.
-        """
-        # render_xblock calls is_learning_mfe to evaluate if the request
-        # is sent by the learning MFE by evaluating the HTTP Referer header,
-        # this enables some optimizations to make the view work properly
-        # on an iframe, for now, we will modify the request meta to pretend
-        # its from the learning MFE URL until render_xblock is improved
-        # to enable this optimizations from other addresses.
-        request.META['HTTP_REFERER'] = getattr(settings, 'LEARNING_MICROFRONTEND_URL', '')
-
-        return render_xblock(request, usage_key_string, check_if_enrolled=True)
-
-
-@method_decorator([xframe_options_exempt, login_required], name='dispatch')
-class LtiCoursewareView(TemplateResponseMixin, LtiBaseView):
-    """LTI courseware view."""
-
-    template_name = 'openedx_lti_tool_plugin/courseware.html'
-
-    def get(
-        self,
-        request: HttpRequest,
-        course_id: str,
-        usage_key_string: str,
-    ) -> Union[HttpResponse, HttpResponseForbidden]:
-        """Render custom LTI courseware view.
-
-        Returns a courseware view for LTI launches.
-
-        Args:
-            request: HTTP request object.
-            usage_key_string: Usage key string.
-
-        Returns:
-            Template response with rendered LTI courseware view
-            or HTTP 403 response if user is not enrolled.
-
-        Raises:
-            Http404: Course is not found, the unit is not in course.
-        """
-        if not self.is_user_enrolled(request.user, course_id):
-            return HttpResponseForbidden(_(f'{request.user} is not enrolled to {course_id}'))
-
-        course_outline = self.get_course_outline(request, course_id)
-
-        # Get all course units and current unit on course.
-        units = []
-        unit_obj = None
-
-        for chapter in course_outline.get('children', []):
-            for sequence in chapter.get('children', []):
-                for unit in sequence.get('children', []):
-                    unit_id = unit.get('id')
-                    units.append(unit_id)
-
-                    # Get current unit ID from unit.
-                    if usage_key_string == unit_id:
-                        unit_obj = unit
-
-        # Return HTTP 404 if unit is not found.
-        if not unit_obj:
-            raise Http404()
-
-        return self.render_to_response(
-            {
-                'course_id': course_id,
-                'course_outline': course_outline,
-                'units': units,
-                'unit_obj': unit_obj,
-            },
-        )
-
-
-@method_decorator([xframe_options_exempt, login_required], name='dispatch')
-class LtiCourseHomeView(TemplateResponseMixin, LtiBaseView):
-    """LTI couse home view."""
-
-    template_name = 'openedx_lti_tool_plugin/course_home.html'
-
-    def get(self, request: HttpRequest, course_id: str) -> Union[HttpResponse, HttpResponseForbidden]:
-        """Render LTI course home view.
-
-        Returns a course home view for LTI launches.
-
-        Args:
-            request: HTTP request object.
-            course_id: Course ID string.
-
-        Returns:
-            Template response with rendered LTI course home
-            or HTTP 403 response if user is not enrolled.
-
-        Raises:
-            Http404: Course is not found or user is not enrolled.
-        """
-        # Check user course enrollment.
-        if not self.is_user_enrolled(request.user, course_id):
-            return HttpResponseForbidden(_(f'{request.user} is not enrolled to {course_id}'))
-
-        return self.render_to_response({
-            'course_outline': self.get_course_outline(request, course_id),
-            'course_id': course_id,
-        })

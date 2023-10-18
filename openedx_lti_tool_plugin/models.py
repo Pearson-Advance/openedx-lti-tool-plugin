@@ -11,6 +11,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import QuerySet
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
@@ -74,6 +75,11 @@ class LtiProfile(models.Model):
             ),
         ]
 
+    @cached_property
+    def email(self) -> str:
+        """LTI profile email address."""
+        return f'{self.uuid}@{app_config.name}'
+
     def save(self, *args: tuple, **kwargs: dict):
         """Model save method.
 
@@ -91,7 +97,7 @@ class LtiProfile(models.Model):
             # Get or create edx user.
             self.user, created = get_user_model().objects.get_or_create(
                 username=f'{app_config.name}.{self.uuid}',
-                email=f'{self.uuid}@{app_config.name}',
+                email=self.email,
             )
 
             # Set password unusable if user is created.
