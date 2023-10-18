@@ -4,10 +4,22 @@
 #
 #    pip-compile --output-file=requirements/base.txt requirements/base.in
 #
+amqp==5.1.1
+    # via
+    #   -c requirements/constraints.txt
+    #   kombu
 asgiref==3.5.2
     # via
     #   -c requirements/constraints.txt
     #   django
+billiard==3.6.4.0
+    # via
+    #   -c requirements/constraints.txt
+    #   celery
+celery==5.2.7
+    # via
+    #   -c requirements/constraints.txt
+    #   -r requirements/base.in
 certifi==2022.9.24
     # via
     #   -c requirements/constraints.txt
@@ -24,8 +36,24 @@ charset-normalizer==2.0.12
 click==8.1.3
     # via
     #   -c requirements/constraints.txt
+    #   celery
+    #   click-didyoumean
+    #   click-plugins
+    #   click-repl
     #   code-annotations
     #   edx-django-utils
+click-didyoumean==0.3.0
+    # via
+    #   -c requirements/constraints.txt
+    #   celery
+click-plugins==1.1.1
+    # via
+    #   -c requirements/constraints.txt
+    #   celery
+click-repl==0.2.0
+    # via
+    #   -c requirements/constraints.txt
+    #   celery
 code-annotations==1.3.0
     # via
     #   -c requirements/constraints.txt
@@ -38,7 +66,7 @@ deprecated==1.2.13
     # via
     #   -c requirements/constraints.txt
     #   jwcrypto
-django==3.2.17
+django==3.2.22
     # via
     #   -c requirements/constraints.txt
     #   -r requirements/base.in
@@ -79,6 +107,10 @@ jwcrypto==1.4.2
     # via
     #   -c requirements/constraints.txt
     #   pylti1p3
+kombu==5.2.4
+    # via
+    #   -c requirements/constraints.txt
+    #   celery
 markupsafe==2.1.1
     # via
     #   -c requirements/constraints.txt
@@ -91,14 +123,22 @@ pbr==5.10.0
     # via
     #   -c requirements/constraints.txt
     #   stevedore
+prompt-toolkit==3.0.31
+    # via
+    #   -c requirements/constraints.txt
+    #   click-repl
 psutil==5.9.2
     # via
     #   -c requirements/constraints.txt
     #   edx-django-utils
 pycparser==2.21
-    # via cffi
+    # via
+    #   -c requirements/constraints.txt
+    #   cffi
 pyjwt==2.5.0
-    # via pylti1p3
+    # via
+    #   -c requirements/constraints.txt
+    #   pylti1p3
 pylti1p3==1.12.1
     # via
     #   -c requirements/constraints.txt
@@ -118,6 +158,7 @@ python-slugify==6.1.2
 pytz==2022.2.1
     # via
     #   -c requirements/constraints.txt
+    #   celery
     #   django
 pyyaml==6.0
     # via
@@ -127,6 +168,10 @@ requests==2.28.1
     # via
     #   -c requirements/constraints.txt
     #   pylti1p3
+six==1.16.0
+    # via
+    #   -c requirements/constraints.txt
+    #   click-repl
 sqlparse==0.4.3
     # via
     #   -c requirements/constraints.txt
@@ -145,6 +190,16 @@ urllib3==1.26.12
     # via
     #   -c requirements/constraints.txt
     #   requests
+vine==5.0.0
+    # via
+    #   -c requirements/constraints.txt
+    #   amqp
+    #   celery
+    #   kombu
+wcwidth==0.2.8
+    # via
+    #   -c requirements/constraints.txt
+    #   prompt-toolkit
 wrapt==1.14.1
     # via
     #   -c requirements/constraints.txt

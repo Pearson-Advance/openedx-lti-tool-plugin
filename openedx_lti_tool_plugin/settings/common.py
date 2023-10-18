@@ -76,3 +76,4 @@ def plugin_settings(settings: LazySettings):
     settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{BACKENDS_MODULE_PATH}.safe_sessions_module_o_v1'
     settings.OLTITP_SITE_CONFIGURATION_BACKEND = f'{BACKENDS_MODULE_PATH}.site_configuration_module_o_v1'
     settings.OLTITP_STUDENT_BACKEND = f'{BACKENDS_MODULE_PATH}.student_module_o_v1'
+    settings.OLTITP_GRADES_BACKEND = f'{BACKENDS_MODULE_PATH}.grades_module_o_v1'

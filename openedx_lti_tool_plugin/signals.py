@@ -9,7 +9,9 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
 
 from openedx_lti_tool_plugin.edxapp_wrapper.core_signals_module import course_grade_changed
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, UserT
+from openedx_lti_tool_plugin.edxapp_wrapper.grades_module import problem_weighted_score_changed
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
+from openedx_lti_tool_plugin.tasks import send_problem_score_update, send_vertical_score_update
 
 # There is no constant defined for the max score sent from edx-platform grades signals.
 # We set this constant based on a grade percent that is between 0.0 and 1.0.
@@ -65,3 +67,43 @@ def update_course_score(
 
     for graded_resource in LtiGradedResource.objects.all_from_user_id(user_id=user.id, context_key=course_key):
         graded_resource.update_score(course_grade.percent, MAX_SCORE, datetime.now(tz=timezone.utc))
+
+
+@receiver(problem_weighted_score_changed())
+def update_unit_or_problem_score(
+    sender: Any,  # pylint: disable=unused-argument
+    weighted_earned: str,
+    weighted_possible: str,
+    user_id: str,
+    course_id: str,
+    usage_id: str,
+    **kwargs: dict,
+):
+    """Update score for LTI graded resources with unit or problem as context key.
+
+    Args:
+        sender: Signal sender argument.
+        weighted_earned: Grade earned.
+        weighted_possible: Grade possible.
+        user_id: User id string.
+        course_id: Course id string.
+        usage_id: Problem usage id string.
+        **kwargs: Arbitrary keyword arguments.
+    """
+    if (
+        not getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False)
+        or not LtiProfile.objects.filter(user__id=user_id)
+    ):
+        return
+
+    send_problem_score_update.delay(
+        weighted_earned,
+        weighted_possible,
+        user_id,
+        usage_id,
+    )
+    send_vertical_score_update.delay(
+        user_id,
+        course_id,
+        usage_id,
+    )
