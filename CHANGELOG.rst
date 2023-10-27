@@ -16,6 +16,23 @@ Unreleased
 
 *
 
+0.0.7 - 2023-10-27
+********************
+
+Added
+=====
+
+- Add support for unit launches with AGS.
+- Add support for problem launches with AGS.
+- Add support for unit/problem AGS score update.
+
+Changed
+=======
+
+- Removed custom LTI courseware, home and XBlock view.
+- Removed LTI view permission middleware.
+- Modified course launch to use learning MFE.
+
 0.0.6 - 2023-10-02
 ********************
 
@@ -121,7 +138,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.6...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.7
 [0.0.6]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.6
 [0.0.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.5
 [0.0.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.4
