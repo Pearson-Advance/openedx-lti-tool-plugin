@@ -2,13 +2,13 @@
 from unittest.mock import MagicMock, call, patch
 
 from ddt import data, ddt
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.exception import LtiException
 
-from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as App
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment_exception
 from openedx_lti_tool_plugin.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.models import LtiProfile
@@ -106,7 +106,12 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, authenticate_and_login_mock(), 'random-course-key')
         message_launch_mock().is_resource_launch.assert_called_once_with()
-        get_resource_launch_mock.assert_called_once_with(COURSE_ID, '')
+        get_resource_launch_mock.assert_called_once_with(
+            request,
+            authenticate_and_login_mock(),
+            COURSE_ID,
+            '',
+        )
         handle_ags_mock.assert_called_once_with(
             message_launch_mock(),
             get_launch_data_mock(),
@@ -167,7 +172,12 @@ class TestLtiToolLaunchViewPost(TestLtiToolLaunchViewBase):
         course_key_mock.assert_called_once_with(COURSE_ID)
         enroll_mock.assert_called_once_with(request, authenticate_and_login_mock(), 'random-course-key')
         message_launch_mock().is_resource_launch.assert_called_once_with()
-        get_resource_launch_mock.assert_called_once_with(COURSE_ID, USAGE_KEY)
+        get_resource_launch_mock.assert_called_once_with(
+            request,
+            authenticate_and_login_mock(),
+            COURSE_ID,
+            USAGE_KEY,
+        )
         handle_ags_mock.assert_called_once_with(
             message_launch_mock(),
             get_launch_data_mock(),
@@ -648,17 +658,20 @@ class TestLtiToolLaunchViewEnroll(TestLtiToolLaunchViewBase):
 
 @patch('openedx_lti_tool_plugin.views.ALLOW_COMPLETE_COURSE_LAUNCH')
 @patch('openedx_lti_tool_plugin.views.redirect')
+@patch('openedx_lti_tool_plugin.views.configuration_helpers')
 class TestLtiToolLaunchViewGetCourseLaunchResponse(TestLtiToolLaunchViewBase):
     """Testcase for LtiToolLaunchView get_course_launch_response method."""
 
     def test_get_course_launch_response(
         self,
+        configuration_helpers: MagicMock,
         redirect_mock: MagicMock,
         allow_complete_course_launch_mock: MagicMock,
     ):
         """Test the behavior of the 'get_course_launch_response' method.
 
         Args:
+            configuration_helpers: Mocked configuration_helpers function.
             redirect_mock: Mocked redirect function.
             allow_complete_course_launch_mock: Mocked 'allow_complete_course_launch' configuration.
         """
@@ -666,12 +679,20 @@ class TestLtiToolLaunchViewGetCourseLaunchResponse(TestLtiToolLaunchViewBase):
 
         self.assertEqual(self.view_class().get_course_launch_response(COURSE_ID), redirect_mock.return_value)
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
-        redirect_mock.assert_called_once_with(f'{App.name}:lti-course-home', course_id=COURSE_ID)
+        configuration_helpers().get_value.assert_called_once_with(
+            "LEARNING_MICROFRONTEND_URL",
+            settings.LEARNING_MICROFRONTEND_URL,
+        )
+        redirect_mock.assert_called_once_with(
+            f'{configuration_helpers().get_value()}'
+            f'/course/{COURSE_ID}'
+        )
 
     @patch('openedx_lti_tool_plugin.views._')
     def test_get_course_launch_response_with_complete_course_launch_disabled(
         self,
         gettext_mock: MagicMock,
+        configuration_helpers: MagicMock,
         redirect_mock: MagicMock,
         allow_complete_course_launch_mock: MagicMock,
     ):
@@ -679,6 +700,7 @@ class TestLtiToolLaunchViewGetCourseLaunchResponse(TestLtiToolLaunchViewBase):
 
         Args:
             gettext_mock: Mocked gettext object.
+            configuration_helpers: Mocked configuration_helpers function.
             redirect_mock: Mocked redirect function.
             allow_complete_course_launch_mock: Mocked 'allow_complete_course_launch' configuration.
         """
@@ -686,9 +708,11 @@ class TestLtiToolLaunchViewGetCourseLaunchResponse(TestLtiToolLaunchViewBase):
 
         with self.assertRaises(LtiToolLaunchException):
             self.view_class().get_course_launch_response(COURSE_ID)
-        gettext_mock.assert_called_once_with('Complete course launches are not enabled.')
-        redirect_mock.assert_not_called()
+
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
+        gettext_mock.assert_called_once_with('Complete course launches are not enabled.')
+        configuration_helpers().get_value.assert_not_called()
+        redirect_mock.assert_not_called()
 
 
 @ddt
@@ -721,7 +745,7 @@ class TestLtiToolLaunchViewGetUnitComponentLaunchResponse(TestLtiToolLaunchViewB
             redirect_mock.return_value,
         )
         usage_key_mock.from_string.assert_called_once_with(USAGE_KEY)
-        redirect_mock.assert_called_once_with(f'{App.name}:lti-xblock', USAGE_KEY)
+        redirect_mock.assert_called_once_with('render_xblock', USAGE_KEY)
 
     @patch('openedx_lti_tool_plugin.views._')
     def test_get_unit_component_launch_response_with_unit_external_to_course(
@@ -924,34 +948,52 @@ class TestLtiToolLaunchViewHandleAgs(TestLtiToolLaunchViewBase):
         lti_graded_resource_mock.objects.filter.return_value.first.assert_not_called()
 
 
+@patch('openedx_lti_tool_plugin.views.set_logged_in_cookies')
 class TestLtiToolLaunchViewGetResourceLaunch(TestLtiToolLaunchViewBase):
     """Testcase for LtiToolLaunchView get_resource_launch method."""
 
     @patch.object(LtiToolLaunchView, 'get_course_launch_response')
-    def test_get_resource_launch_course(self, get_course_launch_response_mock: MagicMock):
+    def test_get_resource_launch_course(
+        self,
+        get_course_launch_response_mock: MagicMock,
+        set_logged_in_cookies: MagicMock,
+    ):
         """Test the 'get_resource_launch' method for a course.
 
         Args:
             get_course_launch_response_mock: Mocked 'get_course_launch_response' method.
+            set_logged_in_cookies: Mocked set_logged_in_cookies function.
         """
         self.assertEqual(
-            self.view_class().get_resource_launch(COURSE_ID),
-            (get_course_launch_response_mock.return_value, COURSE_ID),
+            self.view_class().get_resource_launch(None, self.user, COURSE_ID),
+            (set_logged_in_cookies.return_value, COURSE_ID),
         )
         get_course_launch_response_mock.assert_called_once_with(COURSE_ID)
+        set_logged_in_cookies.assert_called_once_with(
+            None,
+            get_course_launch_response_mock(),
+            self.user,
+        )
 
     @patch.object(LtiToolLaunchView, 'get_unit_component_launch_response')
-    def test_get_resource_launch_unit_component(self, get_unit_component_launch_response_mock: MagicMock):
+    def test_get_resource_launch_unit_component(
+        self,
+        get_unit_component_launch_response_mock: MagicMock,
+        set_logged_in_cookies: MagicMock,
+    ):
         """Test the 'get_resource_launch' method when launching a unit component.
 
         Args:
             get_unit_component_launch_response_mock: Mocked 'get_unit_component_launch_response' method.
+            set_logged_in_cookies: Mocked set_logged_in_cookies function.
         """
         self.assertEqual(
-            self.view_class().get_resource_launch(
-                COURSE_ID,
-                USAGE_KEY,
-            ),
-            (get_unit_component_launch_response_mock.return_value, USAGE_KEY),
+            self.view_class().get_resource_launch(None, self.user, COURSE_ID, USAGE_KEY),
+            (set_logged_in_cookies.return_value, USAGE_KEY),
         )
         get_unit_component_launch_response_mock.assert_called_once_with(USAGE_KEY, COURSE_ID)
+        set_logged_in_cookies.assert_called_once_with(
+            None,
+            get_unit_component_launch_response_mock(),
+            self.user,
+        )

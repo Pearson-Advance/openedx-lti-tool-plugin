@@ -64,7 +64,7 @@ class TestLtiProfile(LtiProfileMixin, TestCase):
         getattr_mock.assert_called_once_with(self_mock, 'user', None)
         user_get_or_create_mock.assert_called_once_with(
             username=f'{app_config.name}.{self_mock.uuid}',
-            email=f'{self_mock.uuid}@{app_config.name}',
+            email=self_mock.email,
         )
         self_mock.user.set_unusable_password.assert_called_once_with()
         self_mock.user.save.assert_called_once_with()
@@ -98,7 +98,7 @@ class TestLtiProfile(LtiProfileMixin, TestCase):
         getattr_mock.assert_called_once_with(self_mock, 'user', None)
         user_get_or_create_mock.assert_called_once_with(
             username=f'{app_config.name}.{self_mock.uuid}',
-            email=f'{self_mock.uuid}@{app_config.name}',
+            email=self_mock.email,
         )
         self_mock.user.set_unusable_password.assert_not_called()
         self_mock.user.save.assert_not_called()
@@ -191,6 +191,10 @@ class TestLtiProfile(LtiProfileMixin, TestCase):
     def test_str_method(self):
         """Test __str__ method return value."""
         self.assertEqual(str(self.profile), f'<LtiProfile, ID: {self.profile.id}>')
+
+    def test_email_property(self):
+        """Test email property."""
+        self.assertEqual(self.profile.email, f'{self.profile.uuid}@{app_config.name}')
 
 
 class TestCourseAccessConfiguration(TestCase):
