@@ -16,6 +16,19 @@ Unreleased
 
 *
 
+0.1.0 - 2023-11-11
+********************
+
+Added
+=====
+
+- Add LICENSE.
+
+Changed
+=======
+
+- Improved README.rst.
+
 0.0.7 - 2023-10-27
 ********************
 
@@ -138,7 +151,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.0.7...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.0
 [0.0.7]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.7
 [0.0.6]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.6
 [0.0.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.5
