@@ -16,6 +16,15 @@ Unreleased
 
 *
 
+0.1.1 - 2023-12-26
+********************
+
+Changed
+=======
+
+- Removed AUTHENTICATION_BACKENDS modification.
+- LtiAuthenticationBackend need to be added to AUTHENTICATION_BACKENDS from platform configurations.
+
 0.1.0 - 2023-11-11
 ********************
 
