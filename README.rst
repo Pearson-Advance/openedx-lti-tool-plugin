@@ -26,11 +26,12 @@ Installation on Open edX Devstack
   pip install -e /edx/src/openedx-lti-tool-plugin
   /edx/app/edxapp/edx-platform/manage.py lms migrate openedx_lti_tool_plugin # Run plugin migrations
 
-4. Set the lms setting OLTITP_ENABLE_LTI_TOOL to True:
+4. Set the lms setting OLTITP_ENABLE_LTI_TOOL to True and add LtiAuthenticationBackend to AUTHENTICATION_BACKENDS:
 
 .. code-block:: bash
 
   echo 'OLTITP_ENABLE_LTI_TOOL=True' >> ~openedx/edx-platform/lms/envs/devstack_docker.py
+  echo 'AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')' >> ~openedx/edx-platform/lms/envs/devstack_docker.py
 
 5. Restart the LMS.
 
@@ -92,6 +93,7 @@ LMS Settings
 ============
 
 - `OLTITP_ENABLE_LTI_TOOL`: Enables or disables the LTI tool plugin.
+- `LtiAuthenticationBackend`: Class needed to be added to AUTHENTICATION_BACKENDS.
 
 Django Waffle Switches
 ======================
