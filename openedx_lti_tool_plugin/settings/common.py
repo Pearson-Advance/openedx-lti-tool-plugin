@@ -41,7 +41,6 @@ def plugin_settings(settings: LazySettings):
     https://github.com/openedx/edx-django-utils/tree/master/edx_django_utils/plugins
     """
     settings.OLTITP_ENABLE_LTI_TOOL = False
-    settings.AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')
 
     # Backends settings
     settings.OLTITP_CORE_SIGNALS_BACKEND = f'{BACKENDS_MODULE_PATH}.core_signals_module_o_v1'
