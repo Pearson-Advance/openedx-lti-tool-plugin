@@ -24,7 +24,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.user_authn_module import set_logged_
 from openedx_lti_tool_plugin.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
-from openedx_lti_tool_plugin.utils import get_client_id, get_pii_from_claims
+from openedx_lti_tool_plugin.utils import get_client_id, get_pii_from_claims, is_plugin_enabled
 from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION, SAVE_PII_DATA
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
         Http404: LTI tool plugin is not enabled.
     """
     def wrapped_view(*args, **kwargs):
-        if not getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False):
+        if not is_plugin_enabled():
             raise Http404()
 
         return view_func(*args, **kwargs)

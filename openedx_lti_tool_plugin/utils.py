@@ -1,6 +1,17 @@
 """Utilities for openedx_lti_tool_plugin."""
 from typing import Optional
 
+from django.conf import settings
+
+
+def is_plugin_enabled() -> bool:
+    """Check 'OLTITP_ENABLE_LTI_TOOL' setting value.
+
+    Returns:
+        True or False
+    """
+    return getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False)
+
 
 def get_client_id(aud: list, azp: Optional[str]) -> str:
     """Get client_id from 'aud' claim.

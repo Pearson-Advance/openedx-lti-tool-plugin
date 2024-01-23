@@ -6,6 +6,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.http.request import HttpRequest
 
 from openedx_lti_tool_plugin.models import LtiProfile, UserT
+from openedx_lti_tool_plugin.utils import is_plugin_enabled
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class LtiAuthenticationBackend(ModelBackend):
         Returns:
             LTI profile user instance or None.
         """
+        if not is_plugin_enabled():
+            return None
+
         log.debug('LTI 1.3 authentication: iss=%s, sub=%s, aud=%s', iss, sub, aud)
 
         try:
