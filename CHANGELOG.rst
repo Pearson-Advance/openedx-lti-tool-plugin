@@ -16,6 +16,14 @@ Unreleased
 
 *
 
+0.1.2 - 2024-01-24
+********************
+
+Changed
+=======
+
+- Improve OLTITP_ENABLE_LTI_TOOL check handling
+
 0.1.1 - 2023-12-26
 ********************
 
@@ -160,7 +168,9 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.2
+[0.1.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.0
 [0.0.7]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.7
 [0.0.6]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.0.6
