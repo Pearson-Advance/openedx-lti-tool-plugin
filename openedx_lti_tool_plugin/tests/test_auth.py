@@ -22,12 +22,14 @@ class TestLtiAuthenticationBackend(TestCase):
         self.request = HttpRequest()
 
     @log_capture()
+    @patch('openedx_lti_tool_plugin.auth.is_plugin_enabled')
     @patch.object(LtiProfile.objects, 'get')
     @patch.object(LtiAuthenticationBackend, 'user_can_authenticate')
     def test_with_profile_and_user_active(
         self,
         user_can_authenticate_mock: MagicMock,
         profile_get_mock: MagicMock,
+        is_plugin_enabled_mock: MagicMock,
         log: LogCaptureForDecorator,
     ):
         """Test authentication with profile and active user.
@@ -35,10 +37,13 @@ class TestLtiAuthenticationBackend(TestCase):
         Args:
             user_can_authenticate_mock: Mocked User model user_can_authenticate function.
             profile_get_mock: Mocked LtiProfile.objects get method.
+            is_plugin_enabled: Mocked is_plugin_enabled function.
             log: LogCapture fixture.
         """
         result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
 
+        self.assertIsNotNone(result)
+        is_plugin_enabled_mock.assert_called_once_with()
         profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
         user_can_authenticate_mock.assert_called_once_with(result)
         log.check(
@@ -53,42 +58,69 @@ class TestLtiAuthenticationBackend(TestCase):
                 f'LTI 1.3 authentication profile: profile={profile_get_mock()} user={result}',
             ),
         )
-        self.assertIsNotNone(result)
 
+    @log_capture()
+    @patch('openedx_lti_tool_plugin.auth.is_plugin_enabled', return_value=False)
+    @patch.object(LtiProfile.objects, 'get')
+    @patch.object(LtiAuthenticationBackend, 'user_can_authenticate')
+    def test_with_lti_disabled(
+        self,
+        user_can_authenticate_mock: MagicMock,
+        profile_get_mock: MagicMock,
+        is_plugin_enabled_mock: MagicMock,
+        log: LogCaptureForDecorator,
+    ):
+        """Test authentication with plugin disabled.
+
+        Args:
+            user_can_authenticate_mock: Mocked User model user_can_authenticate function.
+            profile_get_mock: Mocked LtiProfile.objects get method.
+            is_plugin_enabled: Mocked is_plugin_enabled function.
+        """
+        self.assertIsNone(self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB))
+        is_plugin_enabled_mock.assert_called_once_with()
+        profile_get_mock.assert_not_called()
+        user_can_authenticate_mock.assert_not_called()
+        log.check()
+
+    @patch('openedx_lti_tool_plugin.auth.is_plugin_enabled')
     @patch.object(LtiProfile.objects, 'get', side_effect=LtiProfile.DoesNotExist)
     def test_without_profile(
         self,
         profile_get_mock: MagicMock,
+        is_plugin_enabled_mock: MagicMock,
     ):
         """Test authentication without profile.
 
         Args:
             profile_get_mock: Mocked LtiProfile.objects get method.
+            is_plugin_enabled: Mocked is_plugin_enabled function.
         """
-        result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
-
+        self.assertIsNone(self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB))
+        is_plugin_enabled_mock.assert_called_once_with()
         profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
         self.assertRaises(LtiProfile.DoesNotExist, profile_get_mock)
-        self.assertIsNone(result)
 
+    @patch('openedx_lti_tool_plugin.auth.is_plugin_enabled')
     @patch.object(LtiProfile.objects, 'get')
     @patch.object(LtiAuthenticationBackend, 'user_can_authenticate', return_value=False)
     def test_with_profile_and_user_inactive(
         self,
         user_can_authenticate_mock: MagicMock,
         profile_get_mock: MagicMock,
+        is_plugin_enabled_mock: MagicMock,
     ):
         """Test authentication with profile and inactive user.
 
         Args:
             user_can_authenticate_mock: Mocked User model user_can_authenticate function.
             profile_get_mock: Mocked LtiProfile.objects get method.
+            is_plugin_enabled: Mocked is_plugin_enabled function.
         """
-        result = self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB)
-
+        self.assertIsNone(self.backend.authenticate(self.request, iss=ISS, aud=AUD, sub=SUB))
+        is_plugin_enabled_mock.assert_called_once_with()
         profile_get_mock.assert_called_once_with(platform_id=ISS, client_id=AUD, subject_id=SUB)
         user_can_authenticate_mock.assert_called_once_with(profile_get_mock().user)
-        self.assertIsNone(result)
 
     @override_settings(AUTHENTICATION_BACKENDS=['django.contrib.auth.backends.ModelBackend'])
     def test_without_backend_on_settings(self):

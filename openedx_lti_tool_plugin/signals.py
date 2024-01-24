@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
@@ -13,6 +12,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.core_signals_module import course_gr
 from openedx_lti_tool_plugin.edxapp_wrapper.grades_module import problem_weighted_score_changed
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiGradedResource, LtiProfile, UserT
 from openedx_lti_tool_plugin.tasks import send_problem_score_update, send_vertical_score_update
+from openedx_lti_tool_plugin.utils import is_plugin_enabled
 
 # There is no constant defined for the max score sent from edx-platform grades signals.
 # We set this constant based on a grade percent that is between 0.0 and 1.0.
@@ -91,7 +91,7 @@ def update_course_score(
     # Ignore signal if plugin is disabled, is not a LTI user grade
     # or the course grade has not been passed.
     if (
-        not getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False)
+        not is_plugin_enabled()
         or not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None)
         or not course_grade.passed
     ):
@@ -123,7 +123,7 @@ def update_unit_or_problem_score(
         **kwargs: Arbitrary keyword arguments.
     """
     if (
-        not getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False)
+        not is_plugin_enabled()
         or not LtiProfile.objects.filter(user__id=user_id)
     ):
         return

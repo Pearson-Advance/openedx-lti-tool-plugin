@@ -1,5 +1,5 @@
 """Tests for the openedx_lti_tool_plugin signals module."""
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from django.db.models import signals
 from django.test import TestCase, override_settings
@@ -70,10 +70,10 @@ class TestUpdateCourseScore(TestCase):
     @patch('openedx_lti_tool_plugin.signals.timezone')
     @patch.object(LtiGradedResource.objects, 'all_from_user_id')
     @patch('openedx_lti_tool_plugin.signals.getattr')
-    @patch('openedx_lti_tool_plugin.signals.settings')
+    @patch('openedx_lti_tool_plugin.signals.is_plugin_enabled')
     def test_update_score(
         self,
-        settings_mock: MagicMock,
+        is_plugin_enabled_mock: MagicMock,
         getattr_mock: MagicMock,
         all_from_user_id_mock: MagicMock,
         timezone_mock: MagicMock,
@@ -82,7 +82,7 @@ class TestUpdateCourseScore(TestCase):
         """Test signal when AGS score is updated.
 
         Args:
-            settings_mock: Mocked settings function.
+            is_plugin_enabled_mock: Mocked is_plugin_enabled function.
             getattr_mock: Mocked getattr function.
             all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
             timezone_mock: Mocked timezone function.
@@ -92,10 +92,8 @@ class TestUpdateCourseScore(TestCase):
         all_from_user_id_mock.return_value = [self.graded_resource]
 
         self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
-        getattr_mock.assert_has_calls([
-            call(settings_mock, 'OLTITP_ENABLE_LTI_TOOL', False),
-            call(self.user, 'openedx_lti_tool_plugin_lti_profile', None),
-        ])
+        is_plugin_enabled_mock.assert_called_once_with()
+        getattr_mock.assert_called_once_with(self.user, 'openedx_lti_tool_plugin_lti_profile', None)
         all_from_user_id_mock.assert_called_once_with(user_id=self.user.id, context_key=self.course_key)
         datetime_mock.now.assert_called_once_with(tz=timezone_mock.utc)
         self.graded_resource.update_score.assert_called_once_with(
@@ -194,12 +192,10 @@ class TestUpdateUnitOrProblem(TestCase):
         self.usage_id = USAGE_KEY
 
     @patch('openedx_lti_tool_plugin.signals.LtiProfile')
-    @patch('openedx_lti_tool_plugin.signals.settings')
-    @patch('openedx_lti_tool_plugin.signals.getattr')
+    @patch('openedx_lti_tool_plugin.signals.is_plugin_enabled')
     def test_update_problem_score(
         self,
-        getattr_mock: MagicMock,
-        settings_mock: MagicMock,
+        is_plugin_enabled: MagicMock,
         lti_profile_mock: MagicMock,
         send_problem_score_update_mock: MagicMock,
         send_vertical_score_update_mock: MagicMock,
@@ -208,7 +204,7 @@ class TestUpdateUnitOrProblem(TestCase):
 
         Args:
             getattr_mock: Mocked getattr function.
-            setting_mock: Mocked settings.
+            is_plugin_enabled: Mocked is_plugin_enabled function.
             lti_profile_mock: Mocked LtiProfile model.
             send_problem_score_update_mock: Mocked send_problem_score_update task.
             send_vertical_score_update_mock: Mocked send_vertical_score_update task.
@@ -224,7 +220,7 @@ class TestUpdateUnitOrProblem(TestCase):
             ),
             None,
         )
-        getattr_mock.assert_called_once_with(settings_mock, 'OLTITP_ENABLE_LTI_TOOL', False)
+        is_plugin_enabled.assert_called_once_with()
         lti_profile_mock.objects.filter.assert_called_once_with(user__id=self.user_id)
         send_problem_score_update_mock.delay.assert_called_once_with(
             self.weighted_earned,
