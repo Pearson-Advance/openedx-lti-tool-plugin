@@ -93,7 +93,7 @@ def update_course_score(
     if (
         not is_plugin_enabled()
         or not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None)
-        or not (course_grade.percent)
+        or not course_grade.percent
     ):
         return
 
