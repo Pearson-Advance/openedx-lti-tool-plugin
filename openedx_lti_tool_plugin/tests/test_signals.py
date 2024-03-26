@@ -1,6 +1,8 @@
 """Tests for the openedx_lti_tool_plugin signals module."""
+from typing import Optional, Union
 from unittest.mock import MagicMock, patch
 
+import ddt
 from django.db.models import signals
 from django.test import TestCase, override_settings
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
@@ -53,6 +55,7 @@ class TestCreateCourseAccessConfiguration(TestCase):
         get_or_create_mock.assert_not_called()
 
 
+@ddt.ddt
 class TestUpdateCourseScore(TestCase):
     """Test update_course_score signal."""
 
@@ -139,20 +142,22 @@ class TestUpdateCourseScore(TestCase):
         datetime_mock.now.assert_not_called()
         self.graded_resource.update_score.assert_not_called()
 
+    @ddt.data(None, 0, 0.0)
     @patch('openedx_lti_tool_plugin.signals.datetime')
     @patch.object(LtiGradedResource.objects, 'all_from_user_id')
-    def test_without_course_grade_passed(
+    def test_without_course_grade_percent(
         self,
+        percent_value: Optional[Union[int, float]],
         all_from_user_id_mock: MagicMock,
         datetime_mock: MagicMock,
     ):
-        """Test signal without course grade passed.
+        """Test signal without course_grade.percent attribute.
 
         Args:
             all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
             datetime_mock: Mocked datetime function.
         """
-        self.course_grade.passed = False
+        self.course_grade.percent = percent_value
 
         self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
         all_from_user_id_mock.assert_not_called()
