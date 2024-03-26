@@ -1,6 +1,8 @@
 """Tests for the openedx_lti_tool_plugin signals module."""
-from unittest.mock import MagicMock, patch
+from typing import Optional, Union
+from unittest.mock import MagicMock, call, patch
 
+import ddt
 from django.db.models import signals
 from django.test import TestCase, override_settings
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
@@ -53,6 +55,7 @@ class TestCreateCourseAccessConfiguration(TestCase):
         get_or_create_mock.assert_not_called()
 
 
+@ddt.ddt
 class TestUpdateCourseScore(TestCase):
     """Test update_course_score signal."""
 
@@ -62,7 +65,7 @@ class TestUpdateCourseScore(TestCase):
             id='random-user-id',
             openedx_lti_tool_plugin_lti_profile='random-lti-profile',
         )
-        self.course_grade = MagicMock(passed=True, percent=1.0)
+        self.course_grade = MagicMock(passed=True, percent=0.1)
         self.course_key = MagicMock()
         self.graded_resource = MagicMock()
 
@@ -88,12 +91,18 @@ class TestUpdateCourseScore(TestCase):
             timezone_mock: Mocked timezone function.
             datetime_mock: Mocked datetime function.
         """
-        getattr_mock.side_effect = [True, self.user.openedx_lti_tool_plugin_lti_profile]
+        getattr_mock.side_effect = [
+            self.user.openedx_lti_tool_plugin_lti_profile,
+            self.course_grade.percent,
+        ]
         all_from_user_id_mock.return_value = [self.graded_resource]
 
         self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
         is_plugin_enabled_mock.assert_called_once_with()
-        getattr_mock.assert_called_once_with(self.user, 'openedx_lti_tool_plugin_lti_profile', None)
+        getattr_mock.assert_has_calls([
+            call(self.user, 'openedx_lti_tool_plugin_lti_profile', None),
+            call(self.course_grade, 'percent', None),
+        ])
         all_from_user_id_mock.assert_called_once_with(user_id=self.user.id, context_key=self.course_key)
         datetime_mock.now.assert_called_once_with(tz=timezone_mock.utc)
         self.graded_resource.update_score.assert_called_once_with(
@@ -139,20 +148,22 @@ class TestUpdateCourseScore(TestCase):
         datetime_mock.now.assert_not_called()
         self.graded_resource.update_score.assert_not_called()
 
+    @ddt.data(None, -0.1, -1)
     @patch('openedx_lti_tool_plugin.signals.datetime')
     @patch.object(LtiGradedResource.objects, 'all_from_user_id')
-    def test_without_course_grade_passed(
+    def test_with_invalid_course_grade_percent(
         self,
+        percent_value: Optional[Union[int, float]],
         all_from_user_id_mock: MagicMock,
         datetime_mock: MagicMock,
     ):
-        """Test signal without course grade passed.
+        """Test signal with invalid course_grade.percent attribute.
 
         Args:
             all_from_user_id: Mocked LtiGradedResource all_from_user_id method.
             datetime_mock: Mocked datetime function.
         """
-        self.course_grade.passed = False
+        self.course_grade.percent = percent_value
 
         self.assertEqual(update_course_score(None, self.user, self.course_grade, self.course_key), None)
         all_from_user_id_mock.assert_not_called()

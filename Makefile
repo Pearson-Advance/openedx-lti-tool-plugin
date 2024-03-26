@@ -39,13 +39,13 @@ requirements: ## install core requirements
 dev-requirements: requirements ## install development requirements and Django
 	pip install -r requirements/test.txt
 
-quality: clean ## check coding style
+quality: ## check coding style
 	$(TOX) pylint ${APP_MODULE} manage.py setup.py
 	$(TOX) pycodestyle ${APP_MODULE} manage.py setup.py
 	$(TOX) pydocstyle ${APP_MODULE} manage.py setup.py
 	$(TOX) isort --check-only --diff ${APP_MODULE} manage.py setup.py
 
-test: clean ## run tests
+test: ## run tests
 	$(TOX) python manage.py check
 	$(TOX) pytest
 
