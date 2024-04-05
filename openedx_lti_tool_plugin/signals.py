@@ -88,12 +88,12 @@ def update_course_score(
         course_key: Course opaque key.
         **kwargs: Arbitrary keyword arguments.
     """
-    # Ignore signal if plugin is disabled, is not a LTI user grade
-    # or the course grade has not been passed.
+    # Ignore the signal if the plugin is disabled, the grade is not
+    # of an LTI profile or the course grade percent is less than 0.0.
     if (
         not is_plugin_enabled()
         or not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None)
-        or not course_grade.passed
+        or (getattr(course_grade, 'percent', None) or -0.1) < 0.0
     ):
         return
 
