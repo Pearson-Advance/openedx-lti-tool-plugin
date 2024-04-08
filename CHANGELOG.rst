@@ -16,6 +16,14 @@ Unreleased
 
 *
 
+0.1.3 - 2024-04-08
+********************
+
+Changed
+=======
+
+- Remove limit on AGS score update on course resource link launches.
+
 0.1.2 - 2024-01-24
 ********************
 
@@ -168,7 +176,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.2...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.0
