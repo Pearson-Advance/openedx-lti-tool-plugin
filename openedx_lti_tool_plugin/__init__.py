@@ -1,3 +1,3 @@
 """Support for LTI tool launches and services."""
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
