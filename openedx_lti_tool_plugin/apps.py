@@ -24,11 +24,14 @@ class OpenEdxLtiToolPluginConfig(AppConfig):
         },
     }
 
+    # pylint: disable=unused-import, import-outside-toplevel, cyclic-import
     def ready(self):
         """App ready method.
 
         This will import the app signals to allow them to work.
         """
-        from openedx_lti_tool_plugin import (  # pylint: disable=unused-import, import-outside-toplevel, cyclic-import
-            signals,
+        from openedx_lti_tool_plugin import signals
+        from openedx_lti_tool_plugin.resource_link_launch.ags.signals import (
+            update_course_score,
+            update_unit_or_problem_score,
         )

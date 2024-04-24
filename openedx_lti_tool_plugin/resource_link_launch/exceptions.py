@@ -1,4 +1,4 @@
-"""Exceptions for openedx_lti_tool_plugin."""
+"""Exceptions."""
 
 
 class LtiToolLaunchException(Exception):

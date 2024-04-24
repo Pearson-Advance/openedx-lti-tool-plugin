@@ -1,4 +1,3 @@
-
 """Tests for the openedx_lti_tool_plugin views module."""
 from unittest.mock import MagicMock, patch
 
@@ -29,7 +28,7 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        self.url = reverse('lti1p3-login')
+        self.url = reverse('1.3:login')
         self.view_class = LtiToolLoginView
         self.error_message = 'LTI 1.3: OIDC login failed: '
 
@@ -149,7 +148,7 @@ class TestLtiToolJwksView(LtiViewMixin, TestCase):
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        self.url = reverse('lti1p3-pub-jwks')
+        self.url = reverse('1.3:jwks')
         self.view_class = LtiToolJwksView
 
     @patch.object(DjangoDbToolConf, 'get_jwks', return_value={'keys': {}})
