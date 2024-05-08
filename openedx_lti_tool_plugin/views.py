@@ -43,7 +43,16 @@ class LtiBaseView(View):
 
 
 class LtiToolBaseView(LtiBaseView):
-    """Base LTI view initializing common LTI tool attributes."""
+    """Base LTI view initializing common LTI tool attributes.
+
+    Attributes:
+        tool_config (DjangoDbToolConf): pylti1.3 Tool Configuration.
+        tool_storage (DjangoCacheDataStorage): pylti1.3 Cache Storage.
+
+    .. _LTI 1.3 Advantage Tool implementation in Python - LTI Message Launches:
+        https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#lti-message-launches
+
+    """
 
     tool_config = None
     tool_storage = None
@@ -55,10 +64,27 @@ class LtiToolBaseView(LtiBaseView):
             request: HTTP request object.
             *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
+
         """
         super().setup(request, *args, **kwargs)
         self.tool_config = DjangoDbToolConf()
         self.tool_storage = DjangoCacheDataStorage(cache_name='default')
+
+    def http_response_error(self, message: Union[str, Exception]) -> LoggedHttpResponseBadRequest:
+        """HTTP response with an error message.
+
+        This method will create a HTTP response error with an error message
+        prefixed with the LTI specification version and the view name of the error.
+
+        Args:
+            message: Error message string or Exception object.
+
+        Returns:
+            LoggedHttpResponseBadRequest object with error message
+                prefixed with LTI version and view name.
+
+        """
+        return LoggedHttpResponseBadRequest(f'LTI 1.3 {self.__class__.__name__}: {message}')
 
 
 @method_decorator(csrf_exempt, name='dispatch')
