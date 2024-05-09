@@ -1,7 +1,7 @@
 Open edX LTI Tool Plugin
 ########################
 
-Open edX support for LTI 1.3 tool resource link launches and AGS service.
+Open edX support for LTI 1.3 tool resource link launches and LTI Assignment and Grade Services.
 
 Getting Started
 ***************
@@ -64,8 +64,8 @@ Development Setup
 
   make test && make quality
 
-LTI 1.3 Resource Launch Setup
-=============================
+LTI 1.3 Resource Link Launch Setup
+==================================
 
 1. (Optional) If the LTI tool is on a local environment (devstack), expose the LMS to an external domain (Example: `ngrok <https://ngrok.com/>`_, `Cloudflare Tunnel <https://www.cloudflare.com/products/tunnel/>`).
 2. Go to LMS Admin > PyLTI 1.3 Tool Config > Lti 1.3 tools.
@@ -79,11 +79,12 @@ LTI 1.3 Resource Launch Setup
 6. Execute an LTI 1.3 resource launch from the LTI platform.
 7. The LTI 1.3 resource launch should successfully take you to the requested content.
 
-LTI 1.3 AGS Compatibility
-=========================
+LTI 1.3 Assignment and Grade Services Compatibility
+===================================================
 
-This LTI tool supports the AGS service for both unit/problem and course resource launches, the AGS service requires the LTI platform to send a line item and allow POST score updates, if no line item or POST score permission is sent, the resource launch will fail requesting such configuration.
+This LTI tool supports AGS (Assignment and Grade Services) for both unit/problem and course resource link launches, AGS requires the LTI platform to send a line item and allow POST score updates, if no line item or POST score permission is sent, the resource link launch will fail requesting such configuration.
 
+- LTI Assignment and Grade Services Specification: https://www.imsglobal.org/spec/lti-ags/v2p0
 - Service Claims Example: https://www.imsglobal.org/spec/lti-ags/v2p0#example-link-has-a-single-line-item-tool-can-only-post-score
 
 Plugin Settings
@@ -98,8 +99,8 @@ LMS Settings
 Django Waffle Switches
 ======================
 
-- `openedx_lti_tool_plugin.allow_complete_course_launch`: Toggles the "Course Access Configuration" feature.
-- `openedx_lti_tool_plugin.course_access_configuration`: Toggles the "Complete Course Launch" feature.
+- `openedx_lti_tool_plugin.course_access_configuration`: Toggles the "Course Access Configuration" feature.
+- `openedx_lti_tool_plugin.allow_complete_course_launch`: Toggles the "Complete Course Launch" feature.
 - `openedx_lti_tool_plugin.save_pii_data`: Toggles the "Save PII Data" feature.
 
 Optional Features

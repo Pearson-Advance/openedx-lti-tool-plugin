@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='ltigradedresource',
             name='context_key',
-            field=models.CharField(help_text='The opaque key string of the resource.', max_length=255, validators=[openedx_lti_tool_plugin.models.validate_context_key]),
+            field=models.CharField(help_text='The opaque key string of the resource.', max_length=255, validators=[openedx_lti_tool_plugin.resource_link_launch.ags.validators.validate_context_key]),
         ),
     ]

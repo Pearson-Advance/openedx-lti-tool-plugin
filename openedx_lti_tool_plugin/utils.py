@@ -1,4 +1,4 @@
-"""Utilities for openedx_lti_tool_plugin."""
+"""Utilities."""
 from typing import Optional
 
 from django.conf import settings
@@ -9,6 +9,7 @@ def is_plugin_enabled() -> bool:
 
     Returns:
         True or False
+
     """
     return getattr(settings, 'OLTITP_ENABLE_LTI_TOOL', False)
 
@@ -30,6 +31,7 @@ def get_client_id(aud: list, azp: Optional[str]) -> str:
 
     .. _OpenID Connect Core 1.0 ID Token:
         https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+
     """
     if aud and isinstance(aud, list):
         # Try to retrieve the client_id from the aud list
@@ -46,7 +48,8 @@ def get_client_id(aud: list, azp: Optional[str]) -> str:
 def get_pii_from_claims(claims: dict) -> dict:
     """Get PII from claims dictionary.
 
-    This function extracts PII from a dictionary of claims.
+    This function extracts PII (Personal Identifiable Information)
+    from a dictionary of claims.
 
     Args:
         claims: Claims dictionary.
@@ -56,6 +59,7 @@ def get_pii_from_claims(claims: dict) -> dict:
 
     .. _OpenID Connect Core 1.0 Standard Claims:
         https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
+
     """
     return {
         'email': claims.get('email', ''),
