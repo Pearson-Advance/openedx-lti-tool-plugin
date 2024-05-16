@@ -1,0 +1,11 @@
+{% extends 'openedx_lti_tool_plugin/base.html' %}
+{% load i18n %}
+
+{% block title %}Deep Linking{% endblock %}
+{% block content %}
+<form id='deepLinkingForm' action='{% url form_url launch_id=launch_id %}' method='post'>
+  {% csrf_token %}
+  {{ form }}
+  <input type='submit' value='{% translate "Submit" %}'>
+</form>
+{% endblock %}

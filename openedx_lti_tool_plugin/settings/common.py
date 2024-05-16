@@ -50,3 +50,4 @@ def plugin_settings(settings: LazySettings):
     settings.OLTITP_STUDENT_BACKEND = f'{BACKENDS_MODULE_PATH}.student_module_o_v1'
     settings.OLTITP_GRADES_BACKEND = f'{BACKENDS_MODULE_PATH}.grades_module_o_v1'
     settings.OLTITP_USER_AUTHN_BACKEND = f'{BACKENDS_MODULE_PATH}.user_authn_module_o_v1'
+    settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.learning_sequences_o_v1'

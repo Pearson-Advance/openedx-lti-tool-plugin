@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from django.http import HttpResponse
 from django.http.request import HttpRequest
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -14,6 +14,7 @@ from pylti1p3.exception import LtiException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
+from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.views import LtiToolBaseView
 
@@ -90,6 +91,9 @@ class DeepLinkingFormView(LtiToolBaseView):
     or more specific items to integrate back into the platform and also redirect
     the user's browser back to the platform along with details of the item(s) selected.
 
+    Attributes:
+        form_class (DeepLinkingForm): View Form class.
+
     .. _LTI Deep Linking Specification - Workflow:
         https://www.imsglobal.org/spec/lti-dl/v2p0#workflow
 
@@ -97,6 +101,8 @@ class DeepLinkingFormView(LtiToolBaseView):
         https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#lti-message-launches
 
     """
+
+    form_class = DeepLinkingForm
 
     def get(
         self,
@@ -119,9 +125,15 @@ class DeepLinkingFormView(LtiToolBaseView):
             message = self.get_message_from_cache(request, launch_id)
             validate_deep_linking_message(message)
 
-            # TODO: Add template response with form to allow user to select
-            # the resource links they want and the launch message launch_id.
-            return HttpResponse()
+            return render(
+                request,
+                'openedx_lti_tool_plugin/deep_linking/form.html',
+                {
+                    'form': self.form_class(request=request),
+                    'form_url': f'{app_config.name}:1.3:deep-linking:form',
+                    'launch_id': launch_id,
+                },
+            )
         except (LtiException, DeepLinkingException) as exc:
             return self.http_response_error(exc)
 
@@ -144,13 +156,19 @@ class DeepLinkingFormView(LtiToolBaseView):
 
         """
         try:
+            form = self.form_class(request.POST, request=request)
+
+            if not form.is_valid():
+                raise DeepLinkingException(form.errors)
+
             message = self.get_message_from_cache(request, launch_id)
             validate_deep_linking_message(message)
 
-            # TODO: Add code to obtain form and validate form with resource link data and
-            # add code to process form cleaned data and generate the Deep Linking response:
-            # https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#deep-linking-responses
-            return HttpResponse()
+            return HttpResponse(
+                message.get_deep_link().output_response_form(
+                    form.get_deep_link_resources(),
+                )
+            )
         except (LtiException, DeepLinkingException) as exc:
             return self.http_response_error(exc)
 

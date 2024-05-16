@@ -50,3 +50,8 @@ def set_logged_in_cookies_backend(*args: tuple, **kwargs: dict):
         **kwargs: Arbitrary keyword arguments.
     """
     return Mock()
+
+
+def course_context_backend():
+    """Return CourseContext mock function."""
+    return Mock()
