@@ -7,8 +7,9 @@ from django.urls import reverse
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
-from openedx_lti_tool_plugin.views import LtiToolJwksView, LtiToolLoginView
+from openedx_lti_tool_plugin.views import LtiToolBaseView, LtiToolJwksView, LtiToolLoginView
 
+MODULE_PATH = 'openedx_lti_tool_plugin.views'
 COURSE_KEY = 'random-course-key'
 
 
@@ -20,6 +21,46 @@ class LtiViewMixin():
         super().setUp()
         self.factory = RequestFactory()
         self.user = MagicMock(id='x', username='x', email='x@example.com', is_authenticated=True)
+
+
+class TestLtiToolBaseView(TestCase):
+    """Test LtiToolBaseView class."""
+
+    def setUp(self):
+        """Test fixtures setup."""
+        super().setUp()
+        self.view_class = LtiToolBaseView
+
+    @patch(f'{MODULE_PATH}.DjangoDbToolConf')
+    @patch(f'{MODULE_PATH}.DjangoCacheDataStorage')
+    @patch(f'{MODULE_PATH}.super')
+    def test_setup(
+        self,
+        super_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+    ):
+        """Test `setup` method."""
+        request = MagicMock()
+        instance = self.view_class()
+
+        instance.setup(request)
+
+        super_mock.assert_called_once_with()
+        super_mock().setup.assert_called_once_with(request)
+        tool_conf_mock.assert_called_once_with()
+        tool_storage_mock.assert_called_once_with(cache_name='default')
+        self.assertEqual(instance.tool_config, tool_conf_mock())
+        self.assertEqual(instance.tool_storage, tool_storage_mock())
+
+    @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
+    def test_http_response_error(self, http_response_error_mock: MagicMock):
+        """Test `http_response_error` method with error message."""
+        message = 'Error message'
+        instance = self.view_class()
+
+        self.assertEqual(instance.http_response_error(message), http_response_error_mock.return_value)
+        http_response_error_mock.assert_called_once_with(f'LTI 1.3 {instance.__class__.__name__}: {message}')
 
 
 class TestLtiToolLoginView(LtiViewMixin, TestCase):
