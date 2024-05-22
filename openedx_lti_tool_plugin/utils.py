@@ -1,7 +1,9 @@
 """Utilities."""
-from typing import Optional
+from typing import Optional, Tuple
 
 from django.conf import settings
+
+from openedx_lti_tool_plugin.waffle import SAVE_PII_DATA
 
 
 def is_plugin_enabled() -> bool:
@@ -68,3 +70,28 @@ def get_pii_from_claims(claims: dict) -> dict:
         'family_name': claims.get('family_name', ''),
         'locale': claims.get('locale', ''),
     }
+
+
+def get_identity_claims(launch_data: dict) -> Tuple[str, str, str, dict]:
+    """Get identity claims from launch data.
+
+    Args:
+        launch_data: Launch data dictionary.
+
+    Returns:
+        A tuple containing the `iss`, `aud`, `sub` and
+        PII (Personal Identifiable Information) claims.
+
+    .. _OpenID Connect Core 1.0 - ID Token:
+        https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+
+    .. _OpenID Connect Core 1.0 - Standard Claims:
+        https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
+
+    """
+    return (
+        launch_data.get('iss'),
+        get_client_id(launch_data.get('aud'), launch_data.get('azp')),
+        launch_data.get('sub'),
+        get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {},
+    )

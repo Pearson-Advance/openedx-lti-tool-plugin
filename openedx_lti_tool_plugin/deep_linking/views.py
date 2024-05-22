@@ -16,6 +16,7 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
+from openedx_lti_tool_plugin.utils import get_identity_claims
 from openedx_lti_tool_plugin.views import LtiToolBaseView
 
 
@@ -69,13 +70,15 @@ class DeepLinkingView(LtiToolBaseView):
 
         """
         try:
+            # Get launch message.
             message = DjangoMessageLaunch(
                 request,
                 self.tool_config,
                 launch_data_storage=self.tool_storage,
             )
+            # Check launch message type.
             validate_deep_linking_message(message)
-
+            # Redirect to DeepLinkingForm view.
             return redirect(
                 f'{app_config.name}:1.3:deep-linking:form',
                 launch_id=message.get_launch_id().replace('lti1p3-launch-', ''),
@@ -122,14 +125,21 @@ class DeepLinkingFormView(LtiToolBaseView):
 
         """
         try:
+            # Get message from cache.
             message = self.get_message_from_cache(request, launch_id)
+            # Validate message.
             validate_deep_linking_message(message)
-
+            # Get identity claims from launch data.
+            iss, aud, _sub, _pii = get_identity_claims(message.get_launch_data())
+            # Render form template.
             return render(
                 request,
                 'openedx_lti_tool_plugin/deep_linking/form.html',
                 {
-                    'form': self.form_class(request=request),
+                    'form': self.form_class(
+                        request=request,
+                        lti_tool=self.tool_config.get_lti_tool(iss, aud),
+                    ),
                     'form_url': f'{app_config.name}:1.3:deep-linking:form',
                     'launch_id': launch_id,
                 },
@@ -156,14 +166,22 @@ class DeepLinkingFormView(LtiToolBaseView):
 
         """
         try:
-            form = self.form_class(request.POST, request=request)
-
+            # Get message from cache.
+            message = self.get_message_from_cache(request, launch_id)
+            # Validate message.
+            validate_deep_linking_message(message)
+            # Get identity claims from launch data.
+            iss, aud, _sub, _pii = get_identity_claims(message.get_launch_data())
+            # Initialize form.
+            form = self.form_class(
+                request.POST,
+                request=request,
+                lti_tool=self.tool_config.get_lti_tool(iss, aud),
+            )
+            # Validate form.
             if not form.is_valid():
                 raise DeepLinkingException(form.errors)
-
-            message = self.get_message_from_cache(request, launch_id)
-            validate_deep_linking_message(message)
-
+            # Render Deep Linking response.
             return HttpResponse(
                 message.get_deep_link().output_response_form(
                     form.get_deep_link_resources(),
