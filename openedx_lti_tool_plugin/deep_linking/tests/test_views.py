@@ -8,6 +8,7 @@ from pylti1p3.exception import LtiException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
+from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.deep_linking.tests import MODULE_PATH
 from openedx_lti_tool_plugin.deep_linking.views import (
     DeepLinkingFormView,
@@ -144,8 +145,17 @@ class TestDeepLinkingViewPost(TestCase):
         http_response_error_mock.assert_called_once_with(exception)
 
 
+class TestDeepLinkingFormView(TestCase):
+    """Test DeepLinkingFormView."""
+
+    def test_class_attributes(self):
+        """Test class attributes."""
+        self.assertEqual(DeepLinkingFormView.form_class, DeepLinkingForm)
+
+
 @patch.object(DeepLinkingFormView, 'get_message_from_cache')
 @patch(f'{MODULE_PATH}.validate_deep_linking_message')
+@patch.object(DeepLinkingFormView, 'form_class')
 class TestDeepLinkingFormViewGet(TestCase):
     """Test DeepLinkingFormView get method."""
 
@@ -158,26 +168,37 @@ class TestDeepLinkingFormViewGet(TestCase):
         self.url = reverse('1.3:deep-linking:form', args=[self.launch_id])
         self.request = self.factory.get(self.url)
 
-    @patch(f'{MODULE_PATH}.HttpResponse')
+    @patch(f'{MODULE_PATH}.render')
     def test_get(
         self,
-        http_response_mock: MagicMock,
+        render_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
         """Test `get` method with valid launch_id (happy path)."""
         self.assertEqual(
             self.view_class.as_view()(self.request, self.launch_id),
-            http_response_mock.return_value,
+            render_mock.return_value,
         )
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_called_once_with(get_message_from_cache_mock())
-        http_response_mock.assert_called_once_with()
+        form_class_mock.assert_called_once_with(request=self.request)
+        render_mock.assert_called_once_with(
+            self.request,
+            'openedx_lti_tool_plugin/deep_linking/form.html',
+            {
+                'form': form_class_mock(),
+                'form_url': f'{app_config.name}:1.3:deep-linking:form',
+                'launch_id': self.launch_id,
+            },
+        )
 
     @patch.object(DeepLinkingFormView, 'http_response_error')
     def test_raises_lti_exception(
         self,
         http_response_error_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
@@ -191,12 +212,14 @@ class TestDeepLinkingFormViewGet(TestCase):
         )
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_not_called()
+        form_class_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
 
     @patch.object(DeepLinkingFormView, 'http_response_error')
     def test_raises_deep_linking_exception(
         self,
         http_response_error_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
@@ -210,11 +233,13 @@ class TestDeepLinkingFormViewGet(TestCase):
         )
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_called_once_with(get_message_from_cache_mock())
+        form_class_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
 
 
 @patch.object(DeepLinkingFormView, 'get_message_from_cache')
 @patch(f'{MODULE_PATH}.validate_deep_linking_message')
+@patch.object(DeepLinkingFormView, 'form_class')
 class TestDeepLinkingFormViewPost(TestCase):
     """Test DeepLinkingFormView post method."""
 
@@ -231,6 +256,7 @@ class TestDeepLinkingFormViewPost(TestCase):
     def test_post(
         self,
         http_response_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
@@ -239,14 +265,48 @@ class TestDeepLinkingFormViewPost(TestCase):
             self.view_class.as_view()(self.request, self.launch_id),
             http_response_mock.return_value,
         )
+        form_class_mock.assert_called_once_with(self.request.POST, request=self.request)
+        form_class_mock().is_valid.assert_called_once_with()
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_called_once_with(get_message_from_cache_mock())
-        http_response_mock.assert_called_once_with()
+        form_class_mock().get_deep_link_resources.assert_called_once_with()
+        get_message_from_cache_mock().get_deep_link.assert_called_once_with()
+        get_message_from_cache_mock().get_deep_link().output_response_form.assert_called_once_with(
+            form_class_mock().get_deep_link_resources(),
+        )
+        http_response_mock.assert_called_once_with(
+            get_message_from_cache_mock().get_deep_link().output_response_form(),
+        )
+
+    @patch.object(DeepLinkingFormView, 'http_response_error')
+    def test_with_invalid_form(
+        self,
+        http_response_error_mock: MagicMock,
+        form_class_mock: MagicMock,
+        validate_deep_linking_message_mock: MagicMock,
+        get_message_from_cache_mock: MagicMock,
+    ):
+        """Test with invalid form."""
+        form_class_mock.return_value.is_valid.return_value = False
+
+        self.assertEqual(
+            self.view_class.as_view()(self.request, self.launch_id),
+            http_response_error_mock.return_value,
+        )
+        form_class_mock.assert_called_once_with(self.request.POST, request=self.request)
+        form_class_mock().is_valid.assert_called_once_with()
+        get_message_from_cache_mock.assert_not_called()
+        validate_deep_linking_message_mock.assert_not_called()
+        form_class_mock().get_deep_link_resources.assert_not_called()
+        get_message_from_cache_mock().get_deep_link.assert_not_called()
+        get_message_from_cache_mock().get_deep_link().output_response_form.assert_not_called()
+        http_response_error_mock.assert_called_once()
 
     @patch.object(DeepLinkingFormView, 'http_response_error')
     def test_raises_lti_exception(
         self,
         http_response_error_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
@@ -258,6 +318,8 @@ class TestDeepLinkingFormViewPost(TestCase):
             self.view_class.as_view()(self.request, self.launch_id),
             http_response_error_mock.return_value,
         )
+        form_class_mock.assert_called_once_with(self.request.POST, request=self.request)
+        form_class_mock().is_valid.assert_called_once_with()
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
@@ -266,6 +328,7 @@ class TestDeepLinkingFormViewPost(TestCase):
     def test_raises_deep_linking_exception(
         self,
         http_response_error_mock: MagicMock,
+        form_class_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
         get_message_from_cache_mock: MagicMock,
     ):
@@ -277,6 +340,8 @@ class TestDeepLinkingFormViewPost(TestCase):
             self.view_class.as_view()(self.request, self.launch_id),
             http_response_error_mock.return_value,
         )
+        form_class_mock.assert_called_once_with(self.request.POST, request=self.request)
+        form_class_mock().is_valid.assert_called_once_with()
         get_message_from_cache_mock.assert_called_once_with(self.request, self.launch_id)
         validate_deep_linking_message_mock.assert_called_once_with(get_message_from_cache_mock())
         http_response_error_mock.assert_called_once_with(exception)
