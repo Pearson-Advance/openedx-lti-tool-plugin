@@ -99,8 +99,12 @@ class ResourceLinkLaunchView(LtiToolBaseView):
                     _('Message type is not LtiResourceLinkRequest.'),
                 )
             # Get launch data.
+            # TODO: Replace redundant get_launch_data method with
+            # the DjangoMessageLaunch get_launch_data method.
             launch_data = self.get_launch_data(launch_message)
             # Get identity claims from launch data
+            # TODO: Replace get_identity_claims method with
+            # openedx_lti_tool.utils:get_identity_claims function.
             iss, aud, sub, pii = self.get_identity_claims(launch_data)
             # Check course access permission.
             self.check_course_access_permission(course_id, iss, aud)
