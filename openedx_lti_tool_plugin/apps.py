@@ -32,6 +32,6 @@ class OpenEdxLtiToolPluginConfig(AppConfig):
         """
         from openedx_lti_tool_plugin import signals
         from openedx_lti_tool_plugin.resource_link_launch.ags.signals import (
-            update_course_score,
+            publish_course_score,
             update_unit_or_problem_score,
         )
