@@ -41,10 +41,9 @@ class ResourceLinkLaunchViewBaseTestCase(TestCase):
 @patch.object(ResourceLinkLaunchView, 'tool_config', new_callable=PropertyMock)
 @patch.object(ResourceLinkLaunchView, 'tool_storage', new_callable=PropertyMock)
 @patch(f'{MODULE_PATH}.DjangoMessageLaunch')
-@patch.object(ResourceLinkLaunchView, 'get_launch_data')
-@patch.object(ResourceLinkLaunchView, 'get_identity_claims')
+@patch(f'{MODULE_PATH}.get_identity_claims')
 @patch.object(ResourceLinkLaunchView, 'check_course_access_permission')
-@patch.object(ResourceLinkLaunchView, 'get_lti_profile')
+@patch.object(LtiProfile.objects, 'update_or_create', return_value=(LTI_PROFILE, None))
 @patch.object(ResourceLinkLaunchView, 'authenticate_and_login')
 @patch.object(CourseKey, 'from_string', return_value=COURSE_KEY)
 @patch.object(ResourceLinkLaunchView, 'enroll')
@@ -68,10 +67,9 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         enroll_mock: MagicMock,
         course_key_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
-        get_lti_profile_mock: MagicMock,
+        lti_profile_update_or_create_mock: MagicMock,
         check_course_access_permission_mock: MagicMock,
         get_identity_claims_mock: MagicMock,
-        get_launch_data_mock: MagicMock,
         message_launch_mock: MagicMock,
         tool_storage_mock: MagicMock,
         tool_conf_mock: MagicMock,
@@ -91,13 +89,24 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             launch_data_storage=tool_storage_mock(),
         )
         message_launch_mock().is_resource_launch.assert_called_once_with()
-        get_launch_data_mock.assert_called_once_with(message_launch_mock())
-        get_identity_claims_mock.assert_called_once_with(get_launch_data_mock())
+        message_launch_mock().get_launch_data.assert_called_once_with()
+        get_identity_claims_mock.assert_called_once_with(
+            message_launch_mock().get_launch_data(),
+        )
         check_course_access_permission_mock.assert_called_once_with(COURSE_ID, ISS, AUD)
-        get_lti_profile_mock.assert_called_once_with(ISS, AUD, SUB, PII)
+        lti_profile_update_or_create_mock.assert_called_once_with(
+            platform_id=ISS,
+            client_id=AUD,
+            subject_id=SUB,
+            defaults={'pii': PII},
+        )
         authenticate_and_login_mock.assert_called_once_with(self.request, ISS, AUD, SUB)
         course_key_mock.assert_called_once_with(COURSE_ID)
-        enroll_mock.assert_called_once_with(self.request, authenticate_and_login_mock(), 'random-course-key')
+        enroll_mock.assert_called_once_with(
+            self.request,
+            authenticate_and_login_mock(),
+            'random-course-key',
+        )
         get_launch_response_mock.assert_called_once_with(
             self.request,
             authenticate_and_login_mock(),
@@ -106,8 +115,8 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         )
         handle_ags_mock.assert_called_once_with(
             message_launch_mock(),
-            get_launch_data_mock(),
-            get_lti_profile_mock(),
+            message_launch_mock().get_launch_data(),
+            lti_profile_update_or_create_mock()[0],
             COURSE_ID,
         )
         self.assertEqual(response, response_mock)
@@ -119,10 +128,9 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         enroll_mock: MagicMock,
         course_key_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
-        get_lti_profile_mock: MagicMock,
+        lti_profile_update_or_create_mock: MagicMock,
         check_course_access_permission_mock: MagicMock,
         get_identity_claims_mock: MagicMock,
-        get_launch_data_mock: MagicMock,
         message_launch_mock: MagicMock,
         tool_storage_mock: MagicMock,
         tool_conf_mock: MagicMock,
@@ -142,13 +150,24 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             launch_data_storage=tool_storage_mock(),
         )
         message_launch_mock().is_resource_launch.assert_called_once_with()
-        get_launch_data_mock.assert_called_once_with(message_launch_mock())
-        get_identity_claims_mock.assert_called_once_with(get_launch_data_mock())
+        message_launch_mock().get_launch_data.assert_called_once_with()
+        get_identity_claims_mock.assert_called_once_with(
+            message_launch_mock().get_launch_data(),
+        )
         check_course_access_permission_mock.assert_called_once_with(COURSE_ID, ISS, AUD)
-        get_lti_profile_mock.assert_called_once_with(ISS, AUD, SUB, PII)
+        lti_profile_update_or_create_mock.assert_called_once_with(
+            platform_id=ISS,
+            client_id=AUD,
+            subject_id=SUB,
+            defaults={'pii': PII},
+        )
         authenticate_and_login_mock.assert_called_once_with(self.request, ISS, AUD, SUB)
         course_key_mock.assert_called_once_with(COURSE_ID)
-        enroll_mock.assert_called_once_with(self.request, authenticate_and_login_mock(), 'random-course-key')
+        enroll_mock.assert_called_once_with(
+            self.request,
+            authenticate_and_login_mock(),
+            'random-course-key',
+        )
         get_launch_response_mock.assert_called_once_with(
             self.request,
             authenticate_and_login_mock(),
@@ -157,8 +176,8 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         )
         handle_ags_mock.assert_called_once_with(
             message_launch_mock(),
-            get_launch_data_mock(),
-            get_lti_profile_mock(),
+            message_launch_mock().get_launch_data(),
+            lti_profile_update_or_create_mock()[0],
             USAGE_KEY,
         )
         self.assertEqual(response, response_mock)
@@ -172,10 +191,9 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         enroll_mock: MagicMock,
         course_key_mock: MagicMock,
         authenticate_and_login_mock: MagicMock,
-        get_lti_profile_mock: MagicMock,
+        lti_profile_update_or_create_mock: MagicMock,
         check_course_access_permission_mock: MagicMock,
         get_identity_claims_mock: MagicMock,
-        get_launch_data_mock: MagicMock,
         message_launch_mock: MagicMock,
         tool_storage_mock: MagicMock,
         tool_conf_mock: MagicMock,
@@ -200,10 +218,51 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             ],
             any_order=True,
         )
-        get_launch_data_mock.assert_not_called()
+        message_launch_mock().get_launch_data.assert_not_called()
         get_identity_claims_mock.assert_not_called()
         check_course_access_permission_mock.assert_not_called()
-        get_lti_profile_mock.assert_not_called()
+        lti_profile_update_or_create_mock.assert_not_called()
+        authenticate_and_login_mock.assert_not_called()
+        course_key_mock.assert_not_called()
+        enroll_mock.assert_not_called()
+        get_launch_response_mock.assert_not_called()
+        handle_ags_mock.assert_not_called()
+
+    @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
+    @patch(f'{MODULE_PATH}._')
+    def test_with_lti_exception(
+        self,
+        gettext_mock: MagicMock,
+        logged_http_response_bad_request_mock: MagicMock,
+        handle_ags_mock: MagicMock,
+        get_launch_response_mock: MagicMock,
+        enroll_mock: MagicMock,
+        course_key_mock: MagicMock,
+        authenticate_and_login_mock: MagicMock,
+        lti_profile_update_or_create_mock: MagicMock,
+        check_course_access_permission_mock: MagicMock,
+        get_identity_claims_mock: MagicMock,
+        message_launch_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+    ):
+        """Test with LtiException."""
+        message_launch_mock.side_effect = LtiException('Error message')
+
+        self.assertEqual(
+            self.view_class.as_view()(self.request, COURSE_ID, USAGE_KEY),
+            logged_http_response_bad_request_mock(),
+        )
+        message_launch_mock.assert_called_once_with(
+            self.request,
+            tool_conf_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
+        gettext_mock.assert_called_once_with('LTI 1.3 Resource Link Launch: Error message')
+        message_launch_mock.return_value.get_launch_data.assert_not_called()
+        get_identity_claims_mock.assert_not_called()
+        check_course_access_permission_mock.assert_not_called()
+        lti_profile_update_or_create_mock.assert_not_called()
         authenticate_and_login_mock.assert_not_called()
         course_key_mock.assert_not_called()
         enroll_mock.assert_not_called()
@@ -216,110 +275,40 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         self,
         gettext_mock: MagicMock,
         logged_http_response_bad_request_mock: MagicMock,
-        handle_ags_mock: MagicMock,  # pylint: disable=unused-argument
-        get_launch_response_mock: MagicMock,  # pylint: disable=unused-argument
-        enroll_mock: MagicMock,  # pylint: disable=unused-argument
-        course_key_mock: MagicMock,  # pylint: disable=unused-argument
-        authenticate_and_login_mock: MagicMock,  # pylint: disable=unused-argument
-        get_lti_profile_mock: MagicMock,  # pylint: disable=unused-argument
-        check_course_access_permission_mock: MagicMock,  # pylint: disable=unused-argument
-        get_identity_claims_mock: MagicMock,  # pylint: disable=unused-argument
-        get_launch_data_mock: MagicMock,  # pylint: disable=unused-argument
+        handle_ags_mock: MagicMock,
+        get_launch_response_mock: MagicMock,
+        enroll_mock: MagicMock,
+        course_key_mock: MagicMock,
+        authenticate_and_login_mock: MagicMock,
+        lti_profile_update_or_create_mock: MagicMock,
+        check_course_access_permission_mock: MagicMock,
+        get_identity_claims_mock: MagicMock,
         message_launch_mock: MagicMock,
-        tool_storage_mock: MagicMock,  # pylint: disable=unused-argument
-        tool_conf_mock: MagicMock,  # pylint: disable=unused-argument
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
     ):
         """Test with LtiToolLaunchException."""
         message_launch_mock.side_effect = LtiToolLaunchException('Error message')
 
-        response = self.view_class.as_view()(self.request, COURSE_ID, USAGE_KEY)
-
-        self.assertEqual(response, logged_http_response_bad_request_mock())
+        self.assertEqual(
+            self.view_class.as_view()(self.request, COURSE_ID, USAGE_KEY),
+            logged_http_response_bad_request_mock(),
+        )
+        message_launch_mock.assert_called_once_with(
+            self.request,
+            tool_conf_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
         gettext_mock.assert_called_once_with('LTI 1.3 Resource Link Launch: Error message')
-
-
-class TestResourceLinkLaunchViewGetLaunchData(ResourceLinkLaunchViewBaseTestCase):
-    """Test ResourceLinkLaunchView get_launch_data method."""
-
-    def test_with_launch_message(self):
-        """Test with launch message."""
-        launch_message_mock = MagicMock()
-
-        self.view_class().get_launch_data(launch_message_mock)
-
-        launch_message_mock.get_launch_data.assert_called_once_with()
-
-    @patch(f'{MODULE_PATH}._')
-    def test_with_lti_exception(self, gettext_mock: MagicMock):
-        """Test with LtiException."""
-        launch_message_mock = MagicMock(
-            get_launch_data=MagicMock(side_effect=LtiException),
-        )
-
-        with self.assertRaises(LtiToolLaunchException):
-            self.view_class().get_launch_data(launch_message_mock)
-        gettext_mock.assert_called_once_with('Launch message validation failed: ')
-
-
-@patch(f'{MODULE_PATH}.SAVE_PII_DATA')
-@patch(f'{MODULE_PATH}.get_pii_from_claims')
-@patch(f'{MODULE_PATH}.get_client_id')
-class TestResourceLinkLaunchViewGetIdentityClaims(ResourceLinkLaunchViewBaseTestCase):
-    """Test ResourceLinkLaunchView get_identity_claims method."""
-
-    def test_with_identity_claims(
-        self,
-        get_client_id_mock: MagicMock,
-        get_pii_from_claims_mock: MagicMock,
-        save_pii_data_mock: MagicMock,
-    ):
-        """Test with identity claims."""
-        launch_data_mock = MagicMock()
-        save_pii_data_mock.is_enabled.return_value = True
-
-        self.assertEqual(
-            self.view_class().get_identity_claims(launch_data_mock),
-            (
-                launch_data_mock.get('iss'),
-                get_client_id_mock.return_value,
-                launch_data_mock.get('sub'),
-                get_pii_from_claims_mock.return_value,
-            ),
-        )
-        launch_data_mock.get.assert_called()
-        get_client_id_mock.assert_called_once_with(
-            launch_data_mock.get('aud'),
-            launch_data_mock.get('azp'),
-        )
-        save_pii_data_mock.is_enabled.assert_called_once_with()
-        get_pii_from_claims_mock.assert_called_once_with(launch_data_mock)
-
-    def test_with_disabled_save_pii_data_switch(
-        self,
-        get_client_id_mock: MagicMock,
-        get_pii_from_claims_mock: MagicMock,
-        save_pii_data_mock: MagicMock,
-    ):
-        """Test with disabled `SAVE_PII_DATA` switch."""
-        launch_data_mock = MagicMock()
-        save_pii_data_mock.is_enabled.return_value = False
-
-        self.assertEqual(
-            self.view_class().get_identity_claims(launch_data_mock),
-            (
-                launch_data_mock.get('iss'),
-                get_client_id_mock.return_value,
-                launch_data_mock.get('sub'),
-                {},
-            ),
-        )
-
-        get_client_id_mock.assert_called_once_with(
-            launch_data_mock.get('aud'),
-            launch_data_mock.get('azp'),
-        )
-        save_pii_data_mock.is_enabled.assert_called_once_with()
-        get_pii_from_claims_mock.assert_not_called()
+        message_launch_mock.return_value.get_launch_data.assert_not_called()
+        get_identity_claims_mock.assert_not_called()
+        check_course_access_permission_mock.assert_not_called()
+        lti_profile_update_or_create_mock.assert_not_called()
+        authenticate_and_login_mock.assert_not_called()
+        course_key_mock.assert_not_called()
+        enroll_mock.assert_not_called()
+        get_launch_response_mock.assert_not_called()
+        handle_ags_mock.assert_not_called()
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
@@ -416,42 +405,6 @@ class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchVi
         gettext_mock.assert_called_once_with(
             f'Course ID {COURSE_ID} is not allowed.',
         )
-
-
-@patch.object(LtiProfile.objects, 'get_or_create')
-class TestResourceLinkLaunchViewGetLtiProfile(ResourceLinkLaunchViewBaseTestCase):
-    """Test ResourceLinkLaunchView get_lti_profile method."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        super().setUp()
-        self.lti_profile_mock = MagicMock()
-
-    def test_without_lti_profile(self, get_or_create_mock: MagicMock):
-        """Test without LtiProfile instance."""
-        get_or_create_mock.return_value = self.lti_profile_mock, False
-
-        self.assertEqual(self.view_class().get_lti_profile(ISS, AUD, SUB, PII), self.lti_profile_mock)
-        get_or_create_mock.assert_called_once_with(
-            platform_id=ISS,
-            client_id=AUD,
-            subject_id=SUB,
-            defaults={'pii': PII},
-        )
-        self.lti_profile_mock.update_pii.assert_called_once_with(**PII)
-
-    def test_with_lti_profile(self, get_or_create_mock: MagicMock):
-        """Test with LtiProfile instance."""
-        get_or_create_mock.return_value = self.lti_profile_mock, True
-
-        self.assertEqual(self.view_class().get_lti_profile(ISS, AUD, SUB, PII), self.lti_profile_mock)
-        get_or_create_mock.assert_called_once_with(
-            platform_id=ISS,
-            client_id=AUD,
-            subject_id=SUB,
-            defaults={'pii': PII},
-        )
-        self.lti_profile_mock.update_pii.assert_not_called()
 
 
 @patch(f'{MODULE_PATH}.authenticate')

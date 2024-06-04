@@ -30,12 +30,11 @@ from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile, UserT
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
 from openedx_lti_tool_plugin.resource_link_launch.exceptions import LtiToolLaunchException
-from openedx_lti_tool_plugin.utils import get_client_id, get_pii_from_claims
+from openedx_lti_tool_plugin.utils import get_identity_claims
 from openedx_lti_tool_plugin.views import LtiToolBaseView
-from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION, SAVE_PII_DATA
+from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
 
 log = logging.getLogger(__name__)
-
 AGS_CLAIM_ENDPOINT = 'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint'
 AGS_SCORE_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/score'
 
@@ -99,17 +98,18 @@ class ResourceLinkLaunchView(LtiToolBaseView):
                     _('Message type is not LtiResourceLinkRequest.'),
                 )
             # Get launch data.
-            # TODO: Replace redundant get_launch_data method with
-            # the DjangoMessageLaunch get_launch_data method.
-            launch_data = self.get_launch_data(launch_message)
-            # Get identity claims from launch data
-            # TODO: Replace get_identity_claims method with
-            # openedx_lti_tool.utils:get_identity_claims function.
-            iss, aud, sub, pii = self.get_identity_claims(launch_data)
+            launch_data = launch_message.get_launch_data()
+            # Get identity claims from launch data.
+            iss, aud, sub, pii = get_identity_claims(launch_data)
             # Check course access permission.
             self.check_course_access_permission(course_id, iss, aud)
-            # Get LtiProfile instance.
-            lti_profile = self.get_lti_profile(iss, aud, sub, pii)
+            # Update or create LtiProfile.
+            lti_profile, _created = LtiProfile.objects.update_or_create(
+                platform_id=iss,
+                client_id=aud,
+                subject_id=sub,
+                defaults={'pii': pii},
+            )
             # Authenticate and login user.
             edx_user = self.authenticate_and_login(request, iss, aud, sub)
             # Enroll user.
@@ -130,54 +130,8 @@ class ResourceLinkLaunchView(LtiToolBaseView):
             )
 
             return resource_response
-        except LtiToolLaunchException as exc:
+        except (LtiException, LtiToolLaunchException) as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Resource Link Launch: {exc}'))
-
-    def get_launch_data(self, launch_message: DjangoMessageLaunch) -> dict:
-        """Get launch data from launch message.
-
-        Args:
-            launch_message: DjangoMessageLaunch object.
-
-        Returns:
-            Dictionary with launch message data.
-
-        Raises:
-            LtiToolLaunchException: If LtiException is raised.
-
-        """
-        try:
-            return launch_message.get_launch_data()
-        except LtiException as exc:
-            raise LtiToolLaunchException(
-                _(f'Launch message validation failed: {exc}'),
-            ) from exc
-
-    def get_identity_claims(
-        self,
-        launch_data: dict,
-    ) -> Tuple[str, str, str, dict]:
-        """Get identity claims from launch data.
-
-        Args:
-            launch_data: Launch data dictionary.
-
-        Returns:
-            A tuple containing the `iss`, `aud`, `sub` and PII claims.
-
-        .. _OpenID Connect Core 1.0 - ID Token:
-            https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-
-        .. _OpenID Connect Core 1.0 - Standard Claims:
-            https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
-
-        """
-        return (
-            launch_data.get('iss'),
-            get_client_id(launch_data.get('aud'), launch_data.get('azp')),
-            launch_data.get('sub'),
-            get_pii_from_claims(launch_data) if SAVE_PII_DATA.is_enabled() else {},
-        )
 
     def check_course_access_permission(self, course_id: str, iss: str, aud: str):
         """Check course access permission.
@@ -213,44 +167,6 @@ class ResourceLinkLaunchView(LtiToolBaseView):
 
         if not course_access_config.is_course_id_allowed(course_id):
             raise LtiToolLaunchException(_(f'Course ID {course_id} is not allowed.'))
-
-    def get_lti_profile(
-        self,
-        iss: str,
-        aud: Union[list, str],
-        sub: str,
-        pii: dict,
-    ) -> LtiProfile:
-        """Get LtiProfile instance.
-
-        Get LtiProfile instance and update instance PII (Personal Identifiable Information)
-        if instance is not created.
-
-        Args:
-            iss: Issuer claim.
-            aud: Audience claim.
-            sub: Subject claim.
-            pii: PII claims dictionary.
-
-        Returns:
-            LtiProfile instance.
-
-        .. _OpenID Connect Core 1.0 - ID Token:
-            https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-
-        """
-        # Get or create LtiProfile from claims.
-        lti_profile, lti_profile_created = LtiProfile.objects.get_or_create(
-            platform_id=iss,
-            client_id=aud,
-            subject_id=sub,
-            defaults={'pii': pii},
-        )
-        # Update instance PII data.
-        if not lti_profile_created:
-            lti_profile.update_pii(**pii)
-
-        return lti_profile
 
     def authenticate_and_login(
         self,
