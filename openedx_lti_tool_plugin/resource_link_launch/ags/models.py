@@ -1,18 +1,24 @@
 """Django Models."""
 from __future__ import annotations
 
-import datetime
+import logging
+from datetime import datetime, timezone
 from typing import Optional, Union
 
 from django.db import models
 from django.db.models import QuerySet
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoMessageLaunch
+from pylti1p3.exception import LtiException
 from pylti1p3.grade import Grade
+from requests.exceptions import RequestException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.models import LtiProfile
 from openedx_lti_tool_plugin.resource_link_launch.ags.validators import validate_context_key
+
+log = logging.getLogger(__name__)
 
 
 class LtiGradedResourceManager(models.Manager):
@@ -68,54 +74,6 @@ class LtiGradedResource(models.Model):
         verbose_name_plural = 'LTI graded resources'
         unique_together = ['lti_profile', 'context_key', 'lineitem']
 
-    def update_score(
-        self,
-        given_score: Union[int, float],
-        max_score: Union[int, float],
-        timestamp: datetime.datetime,
-    ):
-        """
-        Use LTI's score service to update the LTI platform's gradebook.
-
-        This method sends a request to the LTI platform to update the assignment score.
-
-        Args:
-            given_score: Score given to the graded resource.
-            max_score: Graded resource max score.
-            timestamp: Score timestamp object.
-
-        """
-        # Create launch message object and set values.
-        launch_message = DjangoMessageLaunch(request=None, tool_config=DjangoDbToolConf())
-        launch_message.set_auto_validation(enable=False)
-        launch_message.set_jwt({
-            'body': {
-                'iss': self.lti_profile.platform_id,
-                'aud': self.lti_profile.client_id,
-                'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint': {
-                    'lineitem': self.lineitem,
-                    'scope': {
-                        'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem',
-                        'https://purl.imsglobal.org/spec/lti-ags/scope/score',
-                    },
-                },
-            },
-        })
-        launch_message.set_restored()
-        launch_message.validate_registration()
-        # Get AGS service object.
-        ags = launch_message.get_ags()
-        # Create grade object and set grade values.
-        grade = Grade()
-        grade.set_score_given(given_score)
-        grade.set_score_maximum(max_score)
-        grade.set_timestamp(timestamp.isoformat())
-        grade.set_activity_progress('Submitted')
-        grade.set_grading_progress('FullyGraded')
-        grade.set_user_id(self.lti_profile.subject_id)
-        # Send grade update.
-        ags.put_grade(grade)
-
     def __str__(self) -> str:
         """Model string representation."""
         return f'<LtiGradedResource, ID: {self.id}>'
@@ -132,3 +90,89 @@ class LtiGradedResource(models.Model):
         """
         self.full_clean()
         super().save(*args, **kwargs)
+
+    @cached_property
+    def publish_score_jwt(self) -> dict:
+        """dict: JWT payload for LTI AGS score publish request."""
+        return {
+            'body': {
+                'iss': self.lti_profile.platform_id,
+                'aud': self.lti_profile.client_id,
+                'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint': {
+                    'lineitem': self.lineitem,
+                    'scope': {
+                        'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem',
+                        'https://purl.imsglobal.org/spec/lti-ags/scope/score',
+                    },
+                },
+            },
+        }
+
+    def publish_score(
+        self,
+        given_score: Union[int, float],
+        score_maximum: Union[int, float],
+        activity_progress: str = 'Submitted',
+        grading_progress: str = 'FullyGraded',
+        timestamp: datetime = datetime.now(tz=timezone.utc),
+        event_id: str = '',
+    ):
+        """
+        Publish score to the LTI platform.
+
+        Args:
+            given_score: Given score.
+            score_maximum: Score maximum.
+            activity_progress: Status of the activity's completion.
+            grading_progress: Status of the grading process.
+            timestamp: Score datetime.
+            event_id: Optional ID for this event.
+
+        Raises:
+            LtiException: Invalid score data.
+            RequestException: LTI AGS score publish request failure.
+
+        .. _LTI Assignment and Grade Services Specification - Score publish service:
+            https://www.imsglobal.org/spec/lti-ags/v2p0/#score-publish-service
+
+        """
+        log_extra = {
+            'event_id': event_id,
+            'given_score': given_score,
+            'score_maximum': score_maximum,
+            'activity_progress': activity_progress,
+            'grading_progress': grading_progress,
+            'user_id': self.lti_profile.subject_id,
+            'timestamp': str(timestamp),
+            'jwt': self.publish_score_jwt,
+        }
+
+        try:
+            log.info(f'LTI AGS score publish request started: {log_extra}')
+            # Create pylti1.3 DjangoMessageLaunch object.
+            message = DjangoMessageLaunch(request=None, tool_config=DjangoDbToolConf())\
+                .set_auto_validation(enable=False)\
+                .set_jwt(self.publish_score_jwt)\
+                .set_restored()\
+                .validate_registration()
+            # Create Grade object for pylti1.3 AssignmentsGradeService.
+            grade = Grade()\
+                .set_score_given(given_score)\
+                .set_score_maximum(score_maximum)\
+                .set_timestamp(timestamp.isoformat())\
+                .set_activity_progress(activity_progress)\
+                .set_grading_progress(grading_progress)\
+                .set_user_id(self.lti_profile.subject_id)
+            # Send score publish request to LTI platform.
+            message.get_ags().put_grade(grade)
+            log.info(f'LTI AGS score publish request success: {log_extra}')
+        except LtiException as exc:
+            log_extra['exception'] = str(exc)
+            log.error(f'LTI AGS score publish request failure: {log_extra}')
+            raise
+        except RequestException as exc:
+            log_extra['exception'] = str(exc)
+            log_extra['request'] = getattr(exc.request, '__dict__', {})
+            log_extra['response'] = getattr(exc.response, '__dict__', {})
+            log.error(f'LTI AGS score publish request failure: {log_extra}')
+            raise

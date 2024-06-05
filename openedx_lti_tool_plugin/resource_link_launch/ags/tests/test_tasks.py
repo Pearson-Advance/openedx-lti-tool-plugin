@@ -34,12 +34,8 @@ class TestSendVerticalScoreUpdate(TestCase):
     @patch(f'{MODULE_PATH}.LtiGradedResource')
     @patch(f'{MODULE_PATH}.CourseKey')
     @patch(f'{MODULE_PATH}.course_grade_factory')
-    @patch(f'{MODULE_PATH}.datetime')
-    @patch(f'{MODULE_PATH}.timezone')
     def test_with_vertical_score_update(
         self,
-        timezone_mock: MagicMock,
-        datetime_mock: MagicMock,
         course_grade_factory_mock: MagicMock,
         course_key_mock: MagicMock,
         lti_graded_resource_mock: MagicMock,
@@ -92,11 +88,9 @@ class TestSendVerticalScoreUpdate(TestCase):
             self.course_descriptor,
         )
         self.course_grade.score_for_module.assert_called_once_with(self.problem_descriptor.parent)
-        datetime_mock.now.assert_called_once_with(tz=timezone_mock.utc)
-        self.vertical_graded_resource.update_score.assert_called_once_with(
+        self.vertical_graded_resource.publish_score.assert_called_once_with(
             1,
             1,
-            datetime_mock.now.return_value,
         )
 
     @patch(f'{MODULE_PATH}.log')
@@ -106,10 +100,8 @@ class TestSendVerticalScoreUpdate(TestCase):
     @patch(f'{MODULE_PATH}.LtiGradedResource')
     @patch(f'{MODULE_PATH}.CourseKey')
     @patch(f'{MODULE_PATH}.course_grade_factory')
-    @patch(f'{MODULE_PATH}.datetime')
     def test_without_graded_resources(
         self,
-        datetime_mock: MagicMock,
         course_grade_factory_mock: MagicMock,
         course_key_mock: MagicMock,
         lti_graded_resource_mock: MagicMock,
@@ -139,8 +131,7 @@ class TestSendVerticalScoreUpdate(TestCase):
         course_grade_factory_mock.return_value.read.assert_not_called()
         log_mock.info.assert_not_called()
         self.course_grade.score_for_module.assert_not_called()
-        datetime_mock.now.assert_not_called()
-        self.vertical_graded_resource.update_score.assert_not_called()
+        self.vertical_graded_resource.publish_score.assert_not_called()
 
 
 @patch(f'{MODULE_PATH}.LtiGradedResource')
@@ -156,12 +147,8 @@ class TestSendProblemScoreUpdate(TestCase):
         self.graded_resource = MagicMock()
 
     @log_capture()
-    @patch(f'{MODULE_PATH}.datetime')
-    @patch(f'{MODULE_PATH}.timezone')
     def test_with_problem_score_update(
         self,
-        timezone_mock: MagicMock,
-        datetime_mock: MagicMock,
         log: LogCaptureForDecorator,
         lti_graded_resource_mock: MagicMock,
     ):
@@ -190,11 +177,9 @@ class TestSendProblemScoreUpdate(TestCase):
                 f'LTI AGS: Sending AGS update for problem {self.problem_id} with user {self.user_id}',
             ),
         )
-        datetime_mock.now.assert_called_once_with(tz=timezone_mock.utc)
-        self.graded_resource.update_score.assert_called_once_with(
+        self.graded_resource.publish_score.assert_called_once_with(
             self.problem_weighted_earned,
             self.problem_weighted_possible,
-            datetime_mock.now.return_value,
         )
 
     @patch(f'{MODULE_PATH}.log')
@@ -215,5 +200,5 @@ class TestSendProblemScoreUpdate(TestCase):
             ),
             None,
         )
-        self.graded_resource.update_score.assert_not_called()
+        self.graded_resource.publish_score.assert_not_called()
         log_mock.assert_not_called()

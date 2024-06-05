@@ -9,7 +9,8 @@ Attributes:
         edx-platform/lms/djangoapps/grades/course_grade.py.
 
 """
-from datetime import datetime, timezone
+import logging
+import uuid
 from typing import Any
 
 from django.dispatch import receiver
@@ -22,45 +23,61 @@ from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedRes
 from openedx_lti_tool_plugin.resource_link_launch.ags.tasks import send_problem_score_update, send_vertical_score_update
 from openedx_lti_tool_plugin.utils import is_plugin_enabled
 
+log = logging.getLogger(__name__)
 MAX_SCORE = 1.0
 
 
 @receiver(course_grade_changed())
-def update_course_score(
+def publish_course_score(
     sender: Any,  # pylint: disable=unused-argument
     user: UserT,
     course_grade: Any,
     course_key: CourseKey,
     **kwargs: dict,
 ):
-    """Update score for LtiGradedResource with course ID as context key.
+    """Publish course score to LTI platform AGS score publish service.
 
-    This signal is ignored if the plugin is disabled, the grade is not of
-    an LtiProfile or the course grade percent is less than 0.0.
+    This signal receiver will publish the score of all course grade changes
+    for all users with an LtiProfile and an existing LtiGradedResource(s)
+    with a context_key value equal to this receiver course_key argument.
+
+    This signal receiver is ignored if the plugin is disabled or
+    the course grade change is not for a user with an LtiProfile.
 
     Args:
-        sender: Signal sender argument.
-        user: User instance.
-        course_grade: Course grade object.
-        course_key: Course opaque key.
+        sender: Signal sender.
+        user: User object.
+        course_grade (CourseGrade): CourseGrade object.
+        course_key (CourseKey): CourseKey object.
         **kwargs: Arbitrary keyword arguments.
 
     """
-    if (
-        not is_plugin_enabled()
-        or not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None)
-        or (getattr(course_grade, 'percent', None) or -0.1) < 0.0
-    ):
+    log_extra = {
+        'event_id': str(uuid.uuid4()),
+        'user': str(user),
+        'course_key': str(course_key),
+        'course_grade': str(course_grade),
+    }
+
+    if not is_plugin_enabled():
+        log.info(f'Plugin is disabled: {log_extra}')
         return
 
-    for graded_resource in LtiGradedResource.objects.all_from_user_id(
+    if not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None):
+        log.info(f'LtiProfile not found for user: {log_extra}')
+        return
+
+    lti_graded_resources = LtiGradedResource.objects.all_from_user_id(
         user_id=user.id,
         context_key=course_key,
-    ):
-        graded_resource.update_score(
+    )
+    log.info(f'Sending course LTI AGS score publish request(s): {log_extra}')
+
+    for lti_graded_resource in lti_graded_resources:
+        lti_graded_resource.publish_score(
             course_grade.percent,
             MAX_SCORE,
-            datetime.now(tz=timezone.utc),
+            event_id=log_extra.get('event_id'),
         )
 
 

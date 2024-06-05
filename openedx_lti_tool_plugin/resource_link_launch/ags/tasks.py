@@ -5,7 +5,6 @@ Attributes:
 
 """
 import logging
-from datetime import datetime, timezone
 
 from celery import shared_task
 from django.contrib.auth import get_user_model
@@ -47,10 +46,9 @@ def send_problem_score_update(
             problem_id,
             user_id,
         )
-        graded_resource.update_score(
+        graded_resource.publish_score(
             problem_weighted_earned,
             problem_weighted_possible,
-            datetime.now(tz=timezone.utc),
         )
 
 
@@ -95,8 +93,7 @@ def send_vertical_score_update(
             str(vertical_key),
             user_id,
         )
-        graded_resource.update_score(
+        graded_resource.publish_score(
             earned,
             possible,
-            datetime.now(tz=timezone.utc),
         )
