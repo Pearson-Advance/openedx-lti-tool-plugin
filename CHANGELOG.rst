@@ -16,6 +16,22 @@ Unreleased
 
 *
 
+0.1.4 - 2024-06-05
+********************
+
+Added
+=====
+
+- Add Deep Linking views.
+- Add DeepLinkingForm to DeepLinkingView.
+- Add CourseAccessConfiguration filter to DeepLinkingForm.
+
+Changed
+=======
+
+- Relocate resource link launch code.
+- Improve LTI AGS score publish code.
+
 0.1.3 - 2024-04-08
 ********************
 
@@ -176,7 +192,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.3...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.1
