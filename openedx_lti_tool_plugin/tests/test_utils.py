@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase
 
 from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
-from openedx_lti_tool_plugin.utils import get_client_id, get_identity_claims, get_pii_from_claims
+from openedx_lti_tool_plugin.utils import PII_CLAIM_NAMES, get_client_id, get_identity_claims, get_pii_from_claims
 
 MODULE_PATH = 'openedx_lti_tool_plugin.utils'
 CLIENT_ID = 'random-client-id'
@@ -36,30 +36,18 @@ class TestGetClientID(TestCase):
 class TestGetPiiFromClaims(TestCase):
     """Test get_pii_from_claims function."""
 
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.claims = {claim: 'test-value' for claim in PII_CLAIM_NAMES}
+
     def test_with_pii_claims(self):
         """Test with PII claims."""
-        claims = {
-            'email': 'test@example.com',
-            'name': 'random-name',
-            'given_name': 'random-given-name',
-            'family_name': 'random-family-name',
-            'locale': 'random-locale',
-        }
-
-        self.assertEqual(get_pii_from_claims(claims), claims)
+        self.assertEqual(get_pii_from_claims(self.claims), self.claims)
 
     def test_with_missing_pii_claims(self):
         """Test with missing PII claims."""
-        self.assertEqual(
-            get_pii_from_claims({}),
-            {
-                'email': '',
-                'name': '',
-                'given_name': '',
-                'family_name': '',
-                'locale': '',
-            }
-        )
+        self.assertEqual(get_pii_from_claims({}), {})
 
 
 @patch(f'{MODULE_PATH}.get_client_id')

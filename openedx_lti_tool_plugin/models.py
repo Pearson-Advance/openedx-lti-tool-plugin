@@ -1,4 +1,4 @@
-"""Models for openedx_lti_tool_plugin."""
+"""Django Model."""
 import json
 import uuid
 from typing import TypeVar
@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
@@ -15,22 +14,22 @@ from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
-from openedx_lti_tool_plugin.utils import get_pii_from_claims
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 
 
 class LtiProfile(models.Model):
-    """LTI 1.3 profile for Open edX users.
+    """LTI 1.3 profile.
 
     A unique representation of the LTI subject that initiated an LTI launch.
+
     """
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user = models.OneToOneField(
         get_user_model(),
         on_delete=models.CASCADE,
-        related_name='openedx_lti_tool_plugin_lti_profile',
+        related_name=f'{app_config.name}_lti_profile',
         verbose_name=_('Open edX user'),
         editable=False,
     )
@@ -55,8 +54,10 @@ class LtiProfile(models.Model):
         help_text=_('Profile PII.'),
     )
 
+    _initial_pii = None
+
     class Meta:
-        """Meta options."""
+        """Model metadata options."""
 
         verbose_name = 'LTI profile'
         verbose_name_plural = 'LTI profiles'
@@ -68,69 +69,76 @@ class LtiProfile(models.Model):
             ),
         ]
 
-    @cached_property
-    def email(self) -> str:
-        """LTI profile email address."""
-        return f'{self.uuid}@{app_config.name}'
-
-    def save(self, *args: tuple, **kwargs: dict):
-        """Model save method.
-
-        In this method we try to validate if the LtiProfile contains an user,
-        if no user is found then we create a new user for this instance.
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """__init__ method.
 
         Args:
             *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
+
         """
-        if getattr(self, 'user', None):
-            return super().save(*args, **kwargs)
+        super().__init__(*args, **kwargs)
+        # Store instance initial field data.
+        self._initial_pii = self.pii
 
-        with transaction.atomic():
-            # Get or create edx user.
-            self.user, created = get_user_model().objects.get_or_create(
-                username=f'{app_config.name}.{self.uuid}',
-                email=self.email,
-            )
+    @property
+    def username(self) -> str:
+        """str: Username."""
+        return f'{app_config.name}.{self.uuid}'
 
-            # Set password unusable if user is created.
-            if created:
-                self.user.set_unusable_password()  # LTI users can only auth throught LTI launches.
-                self.user.save()
+    @property
+    def email(self) -> str:
+        """str: Email address."""
+        return f'{self.uuid}@{app_config.name}'
 
-            # Get or create edx user profile.
-            user_profile().objects.get_or_create(user=self.user)
+    @property
+    def name(self) -> str:
+        """str: Name."""
+        name = self.pii.get('name', '')
+        given_name = self.pii.get('given_name', '')
+        middle_name = self.pii.get('middle_name', '')
+        family_name = self.pii.get('family_name', '')
 
-            return super().save(*args, **kwargs)
+        if name:
+            return name
 
-    def update_pii(self, **kwargs: dict):
-        """
-        Update profile PII.
+        if given_name and middle_name and family_name:
+            return f'{given_name} {middle_name} {family_name}'
 
-        This method will get all PII from kwargs and will check if any of the values
-        exist or are different from the value currently set on the model instance
-        and update the value if true.
+        if given_name and family_name:
+            return f'{given_name} {family_name}'
+
+        return given_name
+
+    @transaction.atomic
+    def save(self, *args: tuple, **kwargs: dict):
+        """Model save method.
 
         Args:
+            *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
+
         """
-        # Get PII from keyword argument.
-        new_pii = get_pii_from_claims(kwargs)
-        # Create a dictionary with existing PII to compare against new PII.
-        merged_pii = {**self.pii}
+        # Merge initial instance PII data with new PII data.
+        self.pii = {**self._initial_pii, **self.pii}
+        # Get or create user.
+        if not getattr(self, 'user', None):
+            self.user, _created = get_user_model().objects.get_or_create(
+                username=self.username,
+                email=self.email,
+            )
+            # Set unusable user password.
+            self.user.set_unusable_password()
+        # Update or create user profile.
+        user_profile().objects.update_or_create(
+            user=self.user,
+            defaults={'name': self.name},
+        )
 
-        # Add new PII value to merged dictionary of PII if the new PII value exists
-        # and is different from existing PII value on this profile.
-        for field, value in new_pii.items():
-            if value and value != merged_pii.get(field):
-                merged_pii[field] = value
-
-        if merged_pii != self.pii:
-            self.pii = merged_pii
-            self.save(update_fields=['pii'])
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        """Get a string representation of this model instance."""
+        """Model string representation."""
         return f'<LtiProfile, ID: {self.id}>'
 
 

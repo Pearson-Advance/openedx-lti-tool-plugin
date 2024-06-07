@@ -1,9 +1,37 @@
-"""Utilities."""
+"""Utilities.
+
+Attributes:
+    PII_CLAIM_NAMES (list): List of PII (Personal Identifiable Information) claim names.
+        https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
+
+"""
 from typing import Optional, Tuple
 
 from django.conf import settings
 
 from openedx_lti_tool_plugin.waffle import SAVE_PII_DATA
+
+PII_CLAIM_NAMES = [
+    'name',
+    'given_name',
+    'middle_name',
+    'family_name',
+    'nickname',
+    'preferred_username',
+    'profile',
+    'picture',
+    'website',
+    'email',
+    'email_verified',
+    'gender',
+    'birthdate',
+    'zoneinfo',
+    'locale',
+    'phone_number',
+    'phone_number_verified',
+    'address',
+    'updated_at',
+]
 
 
 def is_plugin_enabled() -> bool:
@@ -63,13 +91,7 @@ def get_pii_from_claims(claims: dict) -> dict:
         https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
 
     """
-    return {
-        'email': claims.get('email', ''),
-        'name': claims.get('name', ''),
-        'given_name': claims.get('given_name', ''),
-        'family_name': claims.get('family_name', ''),
-        'locale': claims.get('locale', ''),
-    }
+    return {key: value for key, value in claims.items() if key in PII_CLAIM_NAMES}
 
 
 def get_identity_claims(launch_data: dict) -> Tuple[str, str, str, dict]:
