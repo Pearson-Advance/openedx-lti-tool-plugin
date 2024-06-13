@@ -1,4 +1,7 @@
 """Test models module."""
+import random
+import string
+import uuid
 from unittest.mock import MagicMock, call, patch
 
 import ddt
@@ -19,6 +22,7 @@ NAME = 'random-name'
 GIVEN_NAME = 'random-given-name'
 MIDDLE_NAME = 'random-middle-name'
 FAMILY_NAME = 'random-family-name'
+GIVEN_NAME_LARGER = ''.join(random.choices(string.ascii_lowercase, k=300))
 
 
 @ddt.ddt
@@ -29,7 +33,7 @@ class TestLtiProfile(TestCase):
         """Set up test fixtures."""
         super().setUp()
         self.pii = {'x': 'x'}
-        self.new_pii = {'y': 'y'}
+        self.new_pii = {'y': 'y', 'name': GIVEN_NAME_LARGER}
         self.lti_profile = LtiProfile.objects.create(
             platform_id=ISS,
             client_id=AUD,
@@ -42,83 +46,160 @@ class TestLtiProfile(TestCase):
         """Test class instance attributes."""
         self.assertEqual(self.lti_profile._initial_pii, self.pii)
 
-    @patch(f'{MODULE_PATH}.super')
-    @patch(f'{MODULE_PATH}.user_profile')
+    @patch.object(get_user_model().objects, 'filter')
+    @patch(f'{MODULE_PATH}.Q')
+    def test_user_collision(
+        self,
+        q_mock: MagicMock,
+        user_filter_mock: MagicMock,
+    ):
+        """Test user_collision method."""
+        result = self.lti_profile.user_collision()
+
+        q_mock.assert_has_calls([
+            call(email=self.lti_profile.email),
+            call(username=self.lti_profile.username),
+        ])
+        user_filter_mock.assert_called_once_with(q_mock() | q_mock())
+        user_filter_mock().exclude.assert_called_once_with(
+            email=self.lti_profile.email,
+            username=self.lti_profile.username,
+        )
+        user_filter_mock().exclude().exists.assert_called_once_with()
+        self.assertEqual(result, user_filter_mock().exclude().exists())
+
     @patch.object(get_user_model(), 'set_unusable_password')
     @patch.object(get_user_model().objects, 'get_or_create')
-    @patch(f'{MODULE_PATH}.getattr', return_value=False)
-    def test_save_without_user(
+    @patch(f'{MODULE_PATH}.uuid.uuid4', return_value=uuid.uuid4())
+    @patch.object(LtiProfile, 'user_collision')
+    @patch(f'{MODULE_PATH}.getattr', return_value=None)
+    def test_configure_user_without_user_with_user_collision(
         self,
         getattr_mock: MagicMock,
+        user_collision_mock: MagicMock,
+        uuid4_mock: MagicMock,
         user_get_or_create_mock: MagicMock,
         user_set_unusable_password_mock: MagicMock,
-        user_profile_mock: MagicMock,
-        super_mock: MagicMock,
     ):
-        """Test save method without LtiProfile.user attribute value."""
+        """Test configure_user method without user with user collision."""
+        user_collision_mock.side_effect = [True, False]
         user_get_or_create_mock.return_value = self.lti_profile.user, None
-        self.lti_profile.pii = self.new_pii
 
-        self.lti_profile.save([], {})
+        self.lti_profile.configure_user()
 
-        self.assertEqual(self.lti_profile.pii, {**self.pii, **self.new_pii})
-        getattr_mock.assert_called_once_with(self.lti_profile, 'user', None)
+        getattr_mock.assert_has_calls([
+            call(self.lti_profile, 'user', None),
+            call(self.lti_profile, 'user', None),
+            call(self.lti_profile, 'user', None),
+        ])
+        user_collision_mock.assert_has_calls([call(), call()])
+        uuid4_mock.assert_called_once_with()
         user_get_or_create_mock.assert_called_once_with(
-            username=self.lti_profile.username,
             email=self.lti_profile.email,
+            username=self.lti_profile.username,
         )
         user_set_unusable_password_mock.assert_called_once_with()
-        user_profile_mock().objects.update_or_create.assert_called_once_with(
-            user=self.lti_profile.user,
-            defaults={'name': self.lti_profile.name},
+
+    @patch.object(get_user_model(), 'set_unusable_password')
+    @patch.object(get_user_model().objects, 'get_or_create')
+    @patch(f'{MODULE_PATH}.uuid.uuid4')
+    @patch.object(LtiProfile, 'user_collision', return_value=False)
+    @patch(f'{MODULE_PATH}.getattr', return_value=None)
+    def test_configure_user_without_user_witout_user_collision(
+        self,
+        getattr_mock: MagicMock,
+        user_collision_mock: MagicMock,
+        uuid4_mock: MagicMock,
+        user_get_or_create_mock: MagicMock,
+        user_set_unusable_password_mock: MagicMock,
+    ):
+        """Test configure_user method without user without user collision."""
+        user_get_or_create_mock.return_value = self.lti_profile.user, None
+
+        self.lti_profile.configure_user()
+
+        getattr_mock.assert_has_calls([
+            call(self.lti_profile, 'user', None),
+            call(self.lti_profile, 'user', None),
+            call(self.lti_profile, 'user', None),
+        ])
+        user_collision_mock.assert_called_once_with()
+        uuid4_mock.assert_not_called()
+        user_get_or_create_mock.assert_called_once_with(
+            email=self.lti_profile.email,
+            username=self.lti_profile.username,
         )
-        super_mock().save.assert_called_once_with([], {})
+        user_set_unusable_password_mock.assert_called_once_with()
+
+    @patch.object(get_user_model(), 'set_unusable_password')
+    @patch.object(get_user_model().objects, 'get_or_create')
+    @patch.object(get_user_model().objects, 'filter')
+    @patch(f'{MODULE_PATH}.getattr')
+    def test_configure_user_with_user(
+        self,
+        getattr_mock: MagicMock,
+        user_filter_mock: MagicMock,
+        user_get_or_create_mock: MagicMock,
+        user_set_unusable_password_mock: MagicMock,
+    ):
+        """Test configure_user method with user."""
+        user_get_or_create_mock.return_value = self.lti_profile.user, None
+
+        self.lti_profile.configure_user()
+
+        getattr_mock.assert_called_once_with(self.lti_profile, 'user', None)
+        user_filter_mock.assert_not_called()
+        user_filter_mock().exclude.assert_not_called()
+        user_get_or_create_mock.assert_not_called()
+        user_set_unusable_password_mock.assert_not_called()
 
     @patch(f'{MODULE_PATH}.super')
     @patch(f'{MODULE_PATH}.user_profile')
-    @patch.object(get_user_model(), 'set_unusable_password')
-    @patch.object(get_user_model().objects, 'get_or_create')
-    @patch(f'{MODULE_PATH}.getattr')
-    def test_save_with_user(
+    @patch.object(LtiProfile, 'configure_user')
+    def test_save(
         self,
-        getattr_mock: MagicMock,
-        user_get_or_create_mock: MagicMock,
-        user_set_unusable_password_mock: MagicMock,
+        configure_user_mock: MagicMock,
         user_profile_mock: MagicMock,
         super_mock: MagicMock,
     ):
-        """Test save method with LtiProfile.user attribute value."""
-        user_get_or_create_mock.return_value = self.lti_profile.user, None
+        """Test save method."""
         self.lti_profile.pii = self.new_pii
 
         self.lti_profile.save([], {})
 
         self.assertEqual(self.lti_profile.pii, {**self.pii, **self.new_pii})
-        getattr_mock.assert_called_once_with(self.lti_profile, 'user', None)
-        user_get_or_create_mock.assert_not_called()
-        user_set_unusable_password_mock.assert_not_called()
+        configure_user_mock.assert_called_once_with()
         user_profile_mock().objects.update_or_create.assert_called_once_with(
             user=self.lti_profile.user,
-            defaults={'name': self.lti_profile.name},
+            defaults={'name': self.lti_profile.name[:255]},
         )
         super_mock().save.assert_called_once_with([], {})
 
-    def test_username_property(self):
-        """Test username property."""
-        self.assertEqual(
-            self.lti_profile.username,
-            f'{app_config.name}.{self.lti_profile.uuid}',
-        )
+    @patch(f'{MODULE_PATH}.shortuuid.encode')
+    def test_short_uuid_property(self, encode_mock: MagicMock):
+        """Test short_uuid property."""
+        self.assertEqual(self.lti_profile.short_uuid, encode_mock.return_value[:8])
+        encode_mock.assert_called_once_with(self.lti_profile.uuid)
 
-    def test_email_property(self):
-        """Test email property."""
-        self.assertEqual(
-            self.lti_profile.email,
-            f'{self.lti_profile.uuid}@{app_config.name}',
-        )
+    def test_given_name_property(self):
+        """Test given_name property."""
+        self.lti_profile.pii = {'given_name': GIVEN_NAME}
+
+        self.assertEqual(self.lti_profile.given_name, GIVEN_NAME)
+
+    def test_middle_name_property(self):
+        """Test middle_name property."""
+        self.lti_profile.pii = {'middle_name': MIDDLE_NAME}
+
+        self.assertEqual(self.lti_profile.middle_name, MIDDLE_NAME)
+
+    def test_family_name_property(self):
+        """Test family_name property."""
+        self.lti_profile.pii = {'family_name': FAMILY_NAME}
+
+        self.assertEqual(self.lti_profile.family_name, FAMILY_NAME)
 
     @ddt.data(
-        ({'name': NAME}, NAME),
         (
             {
                 'given_name': GIVEN_NAME,
@@ -143,6 +224,45 @@ class TestLtiProfile(TestCase):
         self.lti_profile.pii = name_data
 
         self.assertEqual(self.lti_profile.name, name_return)
+
+    @ddt.data(
+        (
+            False,
+            {
+                'given_name': GIVEN_NAME_LARGER,
+            },
+            f'{GIVEN_NAME_LARGER.lower()[:30]}.',
+        ),
+        (
+            False,
+            {
+                'given_name': GIVEN_NAME_LARGER,
+                'family_name': FAMILY_NAME,
+            },
+            f'{GIVEN_NAME_LARGER.lower()[:30]}{FAMILY_NAME.lower()[:1]}.',
+        ),
+        (False, {}, ''),
+        (True, {}, ''),
+    )
+    @ddt.unpack
+    def test_username_property(self, has_user: bool, name_data: dict, name_return: str):
+        """Test username property."""
+        self.lti_profile.pii = name_data
+
+        if not has_user:
+            self.lti_profile.user = None
+
+        self.assertEqual(
+            self.lti_profile.username,
+            f'{name_return}{self.lti_profile.short_uuid}',
+        )
+
+    def test_email_property(self):
+        """Test email property."""
+        self.assertEqual(
+            self.lti_profile.email,
+            f'{self.lti_profile.uuid}@{app_config.name}',
+        )
 
     def test_str_method(self):
         """Test __str__ method."""

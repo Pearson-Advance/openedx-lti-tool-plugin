@@ -168,6 +168,8 @@ requests==2.28.1
     # via
     #   -c requirements/constraints.txt
     #   pylti1p3
+shortuuid==1.0.13
+    # via -r requirements/base.in
 six==1.16.0
     # via
     #   -c requirements/constraints.txt
