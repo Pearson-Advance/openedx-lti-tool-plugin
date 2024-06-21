@@ -3,10 +3,12 @@ import json
 import uuid
 from typing import TypeVar
 
+import shortuuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
@@ -82,33 +84,92 @@ class LtiProfile(models.Model):
         self._initial_pii = self.pii
 
     @property
-    def username(self) -> str:
-        """str: Username."""
-        return f'{app_config.name}.{self.uuid}'
+    def short_uuid(self) -> str:
+        """str: Short UUID."""
+        return shortuuid.encode(self.uuid)[:8]
 
     @property
-    def email(self) -> str:
-        """str: Email address."""
-        return f'{self.uuid}@{app_config.name}'
+    def given_name(self) -> str:
+        """str: Given name."""
+        return self.pii.get('given_name', '')
+
+    @property
+    def middle_name(self) -> str:
+        """str: Middle name."""
+        return self.pii.get('middle_name', '')
+
+    @property
+    def family_name(self) -> str:
+        """str: Family name."""
+        return self.pii.get('family_name', '')
 
     @property
     def name(self) -> str:
         """str: Name."""
-        name = self.pii.get('name', '')
-        given_name = self.pii.get('given_name', '')
-        middle_name = self.pii.get('middle_name', '')
-        family_name = self.pii.get('family_name', '')
+        if self.given_name and self.middle_name and self.family_name:
+            return f'{self.given_name} {self.middle_name} {self.family_name}'
 
-        if name:
-            return name
+        if self.given_name and self.family_name:
+            return f'{self.given_name} {self.family_name}'
 
-        if given_name and middle_name and family_name:
-            return f'{given_name} {middle_name} {family_name}'
+        return self.given_name
 
-        if given_name and family_name:
-            return f'{given_name} {family_name}'
+    @property
+    def username(self) -> str:
+        """str: Username."""
+        # Get username from user.
+        if getattr(self, 'user', None):
+            return self.user.username
+        # Generate username string without name.
+        if not self.given_name:
+            return f'{self.short_uuid}'
+        # Generate username string with name.
+        return (
+            f'{self.given_name.lower()[:30]}'
+            f'{self.family_name.lower()[:1]}'
+            f'.{self.short_uuid}'
+        )
 
-        return given_name
+    @property
+    def email(self) -> str:
+        """str: Email address."""
+        # Get email from user.
+        if getattr(self, 'user', None):
+            return self.user.email
+        # Generate email string.
+        return f'{self.uuid}@{app_config.name}'
+
+    def user_collision(self) -> bool:
+        """Check for user collision.
+
+        Returns:
+            True if a user collides with another user.
+            False if no user collision is found.
+
+        """
+        return get_user_model().objects.filter(
+            Q(email=self.email)
+            | Q(username=self.username)
+        ).exclude(
+            email=self.email,
+            username=self.username,
+        ).exists()
+
+    def configure_user(self):
+        """Configure user."""
+        # Configure if no user is set.
+        if getattr(self, 'user', None):
+            return
+        # Regenerate uuid on user collision.
+        while self.user_collision():
+            self.uuid = uuid.uuid4()
+        # Get or create user.
+        self.user, _created = get_user_model().objects.get_or_create(
+            email=self.email,
+            username=self.username,
+        )
+        # Set unusable user password.
+        self.user.set_unusable_password()
 
     @transaction.atomic
     def save(self, *args: tuple, **kwargs: dict):
@@ -121,18 +182,13 @@ class LtiProfile(models.Model):
         """
         # Merge initial instance PII data with new PII data.
         self.pii = {**self._initial_pii, **self.pii}
-        # Get or create user.
-        if not getattr(self, 'user', None):
-            self.user, _created = get_user_model().objects.get_or_create(
-                username=self.username,
-                email=self.email,
-            )
-            # Set unusable user password.
-            self.user.set_unusable_password()
+        # Configure user.
+        self.configure_user()
         # Update or create user profile.
         user_profile().objects.update_or_create(
             user=self.user,
-            defaults={'name': self.name},
+            # Truncate name to max_length limit.
+            defaults={'name': self.name[:255]},
         )
 
         return super().save(*args, **kwargs)

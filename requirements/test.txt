@@ -277,6 +277,8 @@ rpds-py==0.10.6
     # via
     #   jsonschema
     #   referencing
+shortuuid==1.0.13
+    # via -r requirements/base.txt
 six==1.16.0
     # via
     #   -c requirements/constraints.txt
