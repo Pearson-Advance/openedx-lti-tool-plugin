@@ -16,6 +16,15 @@ Unreleased
 
 *
 
+0.1.5 - 2024-06-21
+********************
+
+Changed
+=======
+
+- Improve LtiProfile user
+- Improve LtiProfile PII handling
+
 0.1.4 - 2024-06-05
 ********************
 
@@ -192,7 +201,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.4...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.5
 [0.1.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.2
