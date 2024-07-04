@@ -1,6 +1,8 @@
 """Test backends for the openedx_lti_tool_plugin module."""
 from unittest.mock import Mock
 
+from django.db import models
+
 
 def course_grade_changed_backend():
     """Return COURSE_GRADE_CHANGED mock function."""
@@ -52,6 +54,10 @@ def set_logged_in_cookies_backend(*args: tuple, **kwargs: dict):
     return Mock()
 
 
+class CourseContextTest(models.Model):
+    """CourseContext Test Model."""
+
+
 def course_context_backend():
-    """Return CourseContext mock function."""
-    return Mock()
+    """Return CourseContext Test Model."""
+    return CourseContextTest

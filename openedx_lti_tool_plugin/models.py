@@ -1,21 +1,24 @@
 """Django Model."""
 import json
 import uuid
-from typing import TypeVar
+from typing import Optional, TypeVar
 
 import shortuuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
+from pylti1p3.contrib.django import DjangoDbToolConf
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
+from openedx_lti_tool_plugin.edxapp_wrapper.learning_sequences import course_context
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
+from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 
@@ -269,3 +272,63 @@ class CourseAccessConfiguration(models.Model):
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
         return f'<CourseAccessConfiguration, ID: {self.id}>'
+
+
+class CourseContextManager(models.Manager):
+    """CourseContext Model Manager."""
+
+    def all_for_lti_tool(self, iss: str, aud: str) -> Optional[QuerySet]:
+        """Query all CourseContext objects available for an LtiTool.
+
+        Args:
+            iss: Issuer claim.
+            aud: Audience claim.
+
+        Returns:
+            All CourseContext objects if COURSE_ACCESS_CONFIGURATION
+            switch is disabled.
+
+            All CourseContext objects with a Course ID that is in the
+            CourseAccessConfiguration.allowed_course_ids field.
+
+            None if COURSE_ACCESS_CONFIGURATION switch is enabled and
+            no CourseAccessConfiguration can be found for the queried
+            LtiTool.
+
+        """
+        if not COURSE_ACCESS_CONFIGURATION.is_enabled():
+            return self.all()
+
+        try:
+            course_access_config = CourseAccessConfiguration.objects.get(
+                lti_tool=DjangoDbToolConf().get_lti_tool(iss, aud),
+            )
+        except CourseAccessConfiguration.DoesNotExist:
+            return self.none()
+
+        return self.filter(
+            learning_context__context_key__in=json.loads(
+                course_access_config.allowed_course_ids,
+            ),
+        )
+
+
+class CourseContext(course_context()):
+    """CourseContext Model."""
+
+    objects = CourseContextManager()
+
+    class Meta:
+        """Model metadata options."""
+
+        proxy = True
+
+    @property
+    def course_id(self):
+        """str: Course ID."""
+        return self.learning_context.context_key
+
+    @property
+    def title(self):
+        """str: Title."""
+        return self.learning_context.title

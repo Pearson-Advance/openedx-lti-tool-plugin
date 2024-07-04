@@ -45,6 +45,11 @@ TEMPLATES = [
     },
 ]
 
+
+MIGRATION_MODULES = {
+    'openedx_lti_tool_plugin': None,
+}
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -56,14 +61,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTHENTICATION_BACKENDS = ['openedx_lti_tool_plugin.auth.LtiAuthenticationBackend']
 
-
-# Plugin settings
-OLTITP_ENABLE_LTI_TOOL = True
+# Open edX LMS settings
 COURSE_ID_PATTERN = '(?P<course_id>.*)'
 USAGE_KEY_PATTERN = '(?P<usage_key_string>.*)'
 LEARNING_MICROFRONTEND_URL = 'example.com'
 
-# Backends for tests
+# General settings
+OLTITP_ENABLE_LTI_TOOL = True
+
+# Deep linking settings
+OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER = None
+
+# Backend settings
 OLTITP_TEST_BACKEND_MODULE_PATH = 'openedx_lti_tool_plugin.tests.backends_for_tests'
 OLTITP_CORE_SIGNALS_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_MODULESTORE_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH

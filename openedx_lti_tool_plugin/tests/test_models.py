@@ -14,7 +14,7 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, CourseContext, CourseContextManager, LtiProfile
 from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
 
 MODULE_PATH = 'openedx_lti_tool_plugin.models'
@@ -421,4 +421,133 @@ class TestCourseAccessConfiguration(TestCase):
         self.assertEqual(
             str(self.access_configuration),
             f'<CourseAccessConfiguration, ID: {self.access_configuration.id}>',
+        )
+
+
+@patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
+@patch.object(CourseContextManager, 'all')
+@patch(f'{MODULE_PATH}.DjangoDbToolConf')
+@patch.object(CourseAccessConfiguration.objects, 'get')
+@patch.object(CourseContextManager, 'none')
+@patch(f'{MODULE_PATH}.json.loads')
+@patch.object(CourseContextManager, 'filter')
+class TestCourseContextManagerAllForLtiTool(TestCase):
+    """Test CourseContextManager.all_for_lti_tool method."""
+
+    def test_with_course_access_configuration(
+        self,
+        course_context_manager_filter_mock: MagicMock,
+        json_loads_mock: MagicMock,
+        course_context_manager_none_mock: MagicMock,
+        course_access_configuration_get_mock: MagicMock,
+        django_db_tool_conf_mock: MagicMock,
+        course_context_manager_all_mock: MagicMock,
+        course_access_configuration_switch_mock: MagicMock,
+    ):
+        """Test with CourseAccessConfiguration (happy path)."""
+        self.assertEqual(
+            CourseContext.objects.all_for_lti_tool(ISS, AUD),
+            course_context_manager_filter_mock.return_value,
+        )
+        course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
+        course_context_manager_all_mock.assert_not_called()
+        django_db_tool_conf_mock.assert_called_once_with()
+        django_db_tool_conf_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
+        course_access_configuration_get_mock.assert_called_once_with(
+            lti_tool=django_db_tool_conf_mock().get_lti_tool(),
+        )
+        course_context_manager_none_mock.assert_not_called()
+        json_loads_mock.assert_called_once_with(
+            course_access_configuration_get_mock().allowed_course_ids,
+        )
+        course_context_manager_filter_mock.assert_called_once_with(
+            learning_context__context_key__in=json_loads_mock(),
+        )
+
+    def test_without_course_access_configuration(
+        self,
+        course_context_manager_filter_mock: MagicMock,
+        json_loads_mock: MagicMock,
+        course_context_manager_none_mock: MagicMock,
+        course_access_configuration_get_mock: MagicMock,
+        django_db_tool_conf_mock: MagicMock,
+        course_context_manager_all_mock: MagicMock,
+        course_access_configuration_switch_mock: MagicMock,
+    ):
+        """Test without CourseAccessConfiguration."""
+        course_access_configuration_get_mock.side_effect = CourseAccessConfiguration.DoesNotExist
+
+        self.assertEqual(
+            CourseContext.objects.all_for_lti_tool(ISS, AUD),
+            course_context_manager_none_mock.return_value,
+        )
+        course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
+        course_context_manager_all_mock.assert_not_called()
+        django_db_tool_conf_mock.assert_called_once_with()
+        django_db_tool_conf_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
+        course_access_configuration_get_mock.assert_called_once_with(
+            lti_tool=django_db_tool_conf_mock().get_lti_tool(),
+        )
+        course_context_manager_none_mock.assert_called_once_with()
+        json_loads_mock.assert_not_called()
+        course_context_manager_filter_mock.assert_not_called()
+
+    def test_with_disabled_course_access_configuration_switch(
+        self,
+        course_context_manager_filter_mock: MagicMock,
+        json_loads_mock: MagicMock,
+        course_context_manager_none_mock: MagicMock,
+        course_access_configuration_get_mock: MagicMock,
+        django_db_tool_conf_mock: MagicMock,
+        course_context_manager_all_mock: MagicMock,
+        course_access_configuration_switch_mock: MagicMock,
+    ):
+        """Test with disabled COURSE_ACCESS_CONFIGURATION switch."""
+        course_access_configuration_switch_mock.is_enabled.return_value = None
+
+        self.assertEqual(
+            CourseContext.objects.all_for_lti_tool(ISS, AUD),
+            course_context_manager_all_mock.return_value,
+        )
+        course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
+        course_context_manager_all_mock.assert_called_once_with()
+        django_db_tool_conf_mock.assert_not_called()
+        django_db_tool_conf_mock().get_lti_tool.assert_not_called()
+        course_access_configuration_get_mock.assert_not_called()
+        course_context_manager_none_mock.assert_not_called()
+        json_loads_mock.assert_not_called()
+        course_context_manager_filter_mock.assert_not_called()
+
+
+class TestCourseContext(TestCase):
+    """Test CourseContext class."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.context_key = 'example-content-key'
+        self.title = 'example-title'
+        self.learning_context = MagicMock(
+            context_key=self.context_key,
+            title=self.title,
+        )
+        self.course_context = CourseContext()
+        self.course_context.learning_context = self.learning_context
+
+    def test_meta_class_attributes(self):
+        """Test Meta class attributes."""
+        self.assertTrue(self.course_context._meta.proxy)
+
+    def test_course_id(self):
+        """Test course_id property."""
+        self.assertEqual(
+            self.course_context.course_id,
+            self.learning_context.context_key,
+        )
+
+    def test_title(self):
+        """Test title property."""
+        self.assertEqual(
+            self.course_context.title,
+            self.learning_context.title,
         )
