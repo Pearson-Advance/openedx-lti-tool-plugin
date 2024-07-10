@@ -16,7 +16,6 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
-from openedx_lti_tool_plugin.utils import get_identity_claims
 from openedx_lti_tool_plugin.views import LtiToolBaseView
 
 
@@ -129,8 +128,6 @@ class DeepLinkingFormView(LtiToolBaseView):
             message = self.get_message_from_cache(request, launch_id)
             # Validate message.
             validate_deep_linking_message(message)
-            # Get identity claims from launch data.
-            iss, aud, _sub, _pii = get_identity_claims(message.get_launch_data())
             # Render form template.
             return render(
                 request,
@@ -138,7 +135,7 @@ class DeepLinkingFormView(LtiToolBaseView):
                 {
                     'form': self.form_class(
                         request=request,
-                        lti_tool=self.tool_config.get_lti_tool(iss, aud),
+                        launch_data=message.get_launch_data(),
                     ),
                     'form_url': f'{app_config.name}:1.3:deep-linking:form',
                     'launch_id': launch_id,
@@ -170,13 +167,11 @@ class DeepLinkingFormView(LtiToolBaseView):
             message = self.get_message_from_cache(request, launch_id)
             # Validate message.
             validate_deep_linking_message(message)
-            # Get identity claims from launch data.
-            iss, aud, _sub, _pii = get_identity_claims(message.get_launch_data())
             # Initialize form.
             form = self.form_class(
                 request.POST,
                 request=request,
-                lti_tool=self.tool_config.get_lti_tool(iss, aud),
+                launch_data=message.get_launch_data(),
             )
             # Validate form.
             if not form.is_valid():
@@ -184,7 +179,7 @@ class DeepLinkingFormView(LtiToolBaseView):
             # Render Deep Linking response.
             return HttpResponse(
                 message.get_deep_link().output_response_form(
-                    form.get_deep_link_resources(),
+                    form.cleaned_data.get('deep_link_resources', []),
                 )
             )
         except (LtiException, DeepLinkingException) as exc:

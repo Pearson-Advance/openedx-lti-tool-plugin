@@ -40,7 +40,11 @@ def plugin_settings(settings: LazySettings):
     For more information please see:
     https://github.com/openedx/edx-django-utils/tree/master/edx_django_utils/plugins
     """
+    # General settings
     settings.OLTITP_ENABLE_LTI_TOOL = False
+
+    # Deep linking settings
+    settings.OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER = None
 
     # Backends settings
     settings.OLTITP_CORE_SIGNALS_BACKEND = f'{BACKENDS_MODULE_PATH}.core_signals_module_o_v1'
