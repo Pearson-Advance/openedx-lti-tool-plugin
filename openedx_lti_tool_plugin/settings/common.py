@@ -44,7 +44,8 @@ def plugin_settings(settings: LazySettings):
     settings.OLTITP_ENABLE_LTI_TOOL = False
 
     # Deep linking settings
-    settings.OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER = None
+    settings.OLTITP_DL_DEFAULT_CONTENT_ITEMS_BACKEND = 'openedx_lti_tool_plugin.deep_linking.backends.get_content_items'
+    settings.OLTITP_DL_CONTENT_ITEMS_BACKEND = settings.OLTITP_DL_DEFAULT_CONTENT_ITEMS_BACKEND
 
     # Backends settings
     settings.OLTITP_CORE_SIGNALS_BACKEND = f'{BACKENDS_MODULE_PATH}.core_signals_module_o_v1'

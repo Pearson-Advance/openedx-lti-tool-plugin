@@ -7,15 +7,12 @@ from typing import List, Optional, Tuple
 from django import forms
 from django.conf import settings
 from django.http.request import HttpRequest
-from django.urls import reverse
 from django.utils.translation import gettext as _
 from jsonschema import validate
 from pylti1p3.deep_link_resource import DeepLinkResource
 
-from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
+from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
-from openedx_lti_tool_plugin.models import CourseContext
-from openedx_lti_tool_plugin.utils import get_identity_claims
 
 log = logging.getLogger(__name__)
 
@@ -68,123 +65,60 @@ class DeepLinkingForm(forms.Form):
     def get_content_items_choices(self) -> List[Optional[Tuple[str, str]]]:
         """Get content_items field choices.
 
-        This method will get the content_items field choices from a list
-        of content items dictionaries provided by the get_content_items method or
-        the get_content_items_from_provider method if a content items provider is setup.
+        A content item is a JSON that represents content the LTI Platform can consume,
+        this type of object is used by the LTI Deep Linking service, a content item could be an
+        LTI resource link launch URL, a URL to a resource hosted on the internet, an HTML fragment,
+        or any other kind of content type defined by the type JSON attribute.
 
-        A content item is a JSON that represents a content the LTI Platform can consume,
-        this could be an LTI resource link launch URL, an URL to a resource hosted
-        on the internet, an HTML fragment, or any other kind of content type defined
-        by the `type` JSON attribute.
+        Example LTI resource link content item:
+            {
+                'url': 'https://lms/lti/launch/resource_link/course_a',
+                'title': 'Course A',
+                'type': 'ltiResourceLink',
+            }
 
         Each choice that this method returns is a JSON string representing a content item.
 
+        This method will get the content_items field choices from a list of content items
+        dictionaries, this list will be provided by the backend set from the dotted import
+        path in the OLTITP_DL_CONTENT_ITEMS_BACKEND setting.
+
+        The list of content items returned from the backend will be validated with
+        a JSON Schema validator using the schema defined in the CONTENT_ITEMS_SCHEMA constant.
+
         Returns:
-            A list of tuples with content_items field choices or empty list.
+            A list of tuples with content_items field choices or an empty list.
 
         .. _LTI Deep Linking Specification - Content Item Types:
             https://www.imsglobal.org/spec/lti-dl/v2p0#content-item-types
 
-        """
-        return [
-            (json.dumps(content_item), content_item.get('title', ''))
-            for content_item in (
-                self.get_content_items_from_provider()
-                or self.get_content_items()
-            )
-        ]
-
-    def get_content_items_from_provider(self) -> List[Optional[dict]]:
-        """Get content items from a provider function.
-
-        This method will try to obtain content items from a provider function.
-        To setup a provider function the OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER setting
-        must be set to a string with the full path to the function that will act has a provider:
-
-        Example:
-            OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER = 'example.module.path.provider_function'
-
-        This method will then try to import and call the function, the call will include
-        the HTTPRequest object and deep linking launch data dictionary received from
-        the deep linking request has arguments.
-
-        The content items returned from the function must be a list of dictionaries,
-        this list will be validated with a JSON Schema validator using a schema defined
-        in the CONTENT_ITEMS_SCHEMA constant.
-
-        Returns:
-            A list with content item dictionaries.
-
-            An empty list if OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER setting is None.
-            or there was an Exception importing or calling the provider function,
-            or the data returned by the provider function is not valid.
-            or the provider function returned an empty list.
-
-        .. _LTI Deep Linking Specification - Content Item Types:
-            https://www.imsglobal.org/spec/lti-dl/v2p0#content-item-types
+        Raises:
+            DeepLinkingException: If an Exception was raised while the backend was being
+                imported, called or the data returned from the backend is invalid.
 
         """
-        if not (setting := configuration_helpers().get_value(
-            'OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER',
-            settings.OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER,
-        )):
-            return []
-
         try:
-            path, name = str(setting).rsplit('.', 1)
+            # Extract backend path and name from setting.
+            path, name = str(configuration_helpers().get_value(
+                'OLTITP_DL_CONTENT_ITEMS_BACKEND',
+                settings.OLTITP_DL_CONTENT_ITEMS_BACKEND,
+            )).rsplit('.', 1)
+            # Import and call backend with the request and LTI launch data.
             content_items = getattr(import_module(path), name)(
                 self.request,
                 self.launch_data,
             )
+            # Validate list of content items.
             validate(content_items, self.CONTENT_ITEMS_SCHEMA)
 
-            return content_items
-
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            log_extra = {
-                'setting': setting,
-                'exception': str(exc),
-            }
-            log.error(f'Error obtaining content items from provider: {log_extra}')
-
-            return []
-
-    def get_content_items(self) -> List[Optional[dict]]:
-        """Get content items.
-
-        Returns:
-            A list of content item dictionaries or an empty list.
-
-        .. _LTI Deep Linking Specification - Content Item Types:
-            https://www.imsglobal.org/spec/lti-dl/v2p0#content-item-types
-
-        """
-        iss, aud, _sub, _pii = get_identity_claims(self.launch_data)
-
-        return [
-            {
-                'url': self.build_content_item_url(course),
-                'title': course.title,
-            }
-            for course in CourseContext.objects.all_for_lti_tool(iss, aud)
-        ]
-
-    def build_content_item_url(self, course: CourseContext) -> str:
-        """Build content item URL.
-
-        Args:
-            course: CourseContext object.
-
-        Returns:
-            An absolute LTI 1.3 resource link launch URL.
-
-        """
-        return self.request.build_absolute_uri(
-            reverse(
-                f'{app_config.name}:1.3:resource-link:launch-course',
-                kwargs={'course_id': course.course_id},
-            )
-        )
+            return [
+                (json.dumps(content_item), content_item.get('title', ''))
+                for content_item in content_items
+            ]
+        except Exception as exc:
+            raise DeepLinkingException(
+                f'Error obtaining content_items field choices: {exc}',
+            ) from exc
 
     def clean(self) -> dict:
         """Form clean.

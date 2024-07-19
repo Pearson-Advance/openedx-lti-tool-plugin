@@ -93,8 +93,16 @@ Plugin Settings
 LMS Settings
 ============
 
-- `OLTITP_ENABLE_LTI_TOOL`: Enables or disables the LTI tool plugin.
-- `LtiAuthenticationBackend`: Class needed to be added to AUTHENTICATION_BACKENDS.
+General Settings
+----------------
+
+- `OLTITP_ENABLE_LTI_TOOL`: Enables or disables the LTI tool plugin (Default: False).
+
+LTI Deep Linking Service Settings
+---------------------------------
+
+- `OLTITP_DL_DEFAULT_CONTENT_ITEMS_BACKEND`: The default backend used to obtain the LTI Deep Linking form content items (Default: `openedx_lti_tool_plugin.deep_linking.backends.get_content_items`).
+- `OLTITP_DL_CONTENT_ITEMS_BACKEND`: The backend used to obtain the LTI Deep Linking form content items (Default: `openedx_lti_tool_plugin.deep_linking.backends.get_content_items`).
 
 Django Waffle Switches
 ======================
