@@ -2,7 +2,7 @@
 import random
 import string
 import uuid
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, PropertyMock, call, patch
 
 import ddt
 from django.contrib.auth import get_user_model
@@ -14,8 +14,8 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, CourseContext, CourseContextManager, LtiProfile
-from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
+from openedx_lti_tool_plugin.models import CourseAccessConfiguration, CourseContext, CourseContextQuerySet, LtiProfile
+from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
 MODULE_PATH = 'openedx_lti_tool_plugin.models'
 NAME = 'random-name'
@@ -425,14 +425,14 @@ class TestCourseAccessConfiguration(TestCase):
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
-@patch.object(CourseContextManager, 'all')
+@patch.object(CourseContextQuerySet, 'all')
 @patch(f'{MODULE_PATH}.DjangoDbToolConf')
 @patch.object(CourseAccessConfiguration.objects, 'get')
-@patch.object(CourseContextManager, 'none')
+@patch.object(CourseContextQuerySet, 'none')
 @patch(f'{MODULE_PATH}.json.loads')
-@patch.object(CourseContextManager, 'filter')
-class TestCourseContextManagerAllForLtiTool(TestCase):
-    """Test CourseContextManager.all_for_lti_tool method."""
+@patch.object(CourseContextQuerySet, 'filter')
+class TestCourseContextQuerySetAllForLtiTool(TestCase):
+    """Test CourseContextQuerySet.all_for_lti_tool method."""
 
     def test_with_course_access_configuration(
         self,
@@ -519,17 +519,58 @@ class TestCourseContextManagerAllForLtiTool(TestCase):
         course_context_manager_filter_mock.assert_not_called()
 
 
+class TestCourseContextQuerySetFilterBySiteOrgs(TestCase):
+    """Test CourseContextQuerySet.filter_by_site_orgs method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.queryset_class = CourseContextQuerySet
+        self.queryset_self = MagicMock()
+        self.course_context = MagicMock(pk='test-pk', org=ORG)
+        self.course_contexts = [self.course_context]
+
+    @patch(f'{MODULE_PATH}.configuration_helpers')
+    def test_with_site_configuration_setting(
+        self,
+        configuration_helpers_mock: MagicMock,
+    ):
+        """Test with with site configuration `course_org_filter` setting (happy path)."""
+        self.queryset_self.__iter__.return_value = self.course_contexts
+        configuration_helpers_mock().get_current_site_orgs.return_value = [ORG]
+
+        self.assertEqual(
+            self.queryset_class.filter_by_site_orgs(self.queryset_self),
+            self.queryset_self.filter.return_value,
+        )
+        configuration_helpers_mock().get_current_site_orgs.assert_called_once_with()
+        self.queryset_self.filter.assert_called_once_with(pk__in=[self.course_context.pk])
+
+    @patch(f'{MODULE_PATH}.configuration_helpers')
+    def test_without_site_configuration_setting(
+        self,
+        configuration_helpers_mock: MagicMock,
+    ):
+        """Test without site configuration `course_org_filter` setting."""
+        configuration_helpers_mock().get_current_site_orgs.return_value = None
+
+        self.assertEqual(
+            self.queryset_class.filter_by_site_orgs(self.queryset_self),
+            self.queryset_self,
+        )
+        configuration_helpers_mock().get_current_site_orgs.assert_called_once_with()
+        self.queryset_self.filter.assert_not_called()
+
+
 class TestCourseContext(TestCase):
     """Test CourseContext class."""
 
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
-        self.context_key = 'example-content-key'
-        self.title = 'example-title'
         self.learning_context = MagicMock(
-            context_key=self.context_key,
-            title=self.title,
+            context_key=MagicMock(org=ORG),
+            title='test-title',
         )
         self.course_context = CourseContext()
         self.course_context.learning_context = self.learning_context
@@ -544,6 +585,15 @@ class TestCourseContext(TestCase):
             self.course_context.course_id,
             self.learning_context.context_key,
         )
+
+    @patch.object(CourseContext, 'course_id', new_callable=PropertyMock)
+    def test_org(self, course_id_mock: MagicMock):
+        """Test org property."""
+        self.assertEqual(
+            self.course_context.org,
+            course_id_mock.return_value.org,
+        )
+        course_id_mock.assert_called_once_with()
 
     def test_title(self):
         """Test title property."""

@@ -15,32 +15,13 @@ from pylti1p3.exception import LtiException
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
+from openedx_lti_tool_plugin.deep_linking.utils import validate_deep_linking_message
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
-from openedx_lti_tool_plugin.views import LtiToolBaseView
-
-
-def validate_deep_linking_message(message: DjangoMessageLaunch):
-    """
-    Validate DjangoMessageLaunch type is LtiDeepLinkingRequest.
-
-    Args:
-        message: DjangoMessageLaunch object.
-
-    Raises:
-        DeepLinkingException: If message type is not LtiDeepLinkingRequest.
-
-    .. _LTI 1.3 Advantage Tool implementation in Python - LTI Message Launches:
-        https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#lti-message-launches
-
-    """
-    if not message.is_deep_link_launch():
-        raise DeepLinkingException(
-            _('Message type is not LtiDeepLinkingRequest.'),
-        )
+from openedx_lti_tool_plugin.views import LTIToolView
 
 
 @method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
-class DeepLinkingView(LtiToolBaseView):
+class DeepLinkingView(LTIToolView):
     """Deep Linking View.
 
     This view handles the initial LtiDeepLinkingRequest from the platform.
@@ -86,7 +67,7 @@ class DeepLinkingView(LtiToolBaseView):
             return self.http_response_error(exc)
 
 
-class DeepLinkingFormView(LtiToolBaseView):
+class DeepLinkingFormView(LTIToolView):
     """Deep Linking Form View.
 
     This view renders an interface allowing the user to discover and select one
@@ -184,28 +165,3 @@ class DeepLinkingFormView(LtiToolBaseView):
             )
         except (LtiException, DeepLinkingException) as exc:
             return self.http_response_error(exc)
-
-    def get_message_from_cache(
-        self,
-        request: HttpRequest,
-        launch_id: uuid4,
-    ) -> DjangoMessageLaunch:
-        """Get DjangoMessageLaunch from Django cache storage.
-
-        Args:
-            request: HttpRequest object.
-            launch_id: Launch ID UUID4.
-
-        Returns:
-            DjangoMessageLaunch object.
-
-        .. _LTI 1.3 Advantage Tool implementation in Python - Accessing Cached Launch Requests:
-            https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#accessing-cached-launch-requests
-
-        """
-        return DjangoMessageLaunch.from_cache(
-            f'lti1p3-launch-{launch_id}',
-            request,
-            self.tool_config,
-            launch_data_storage=self.tool_storage,
-        )

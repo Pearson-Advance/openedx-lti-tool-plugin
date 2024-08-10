@@ -1,5 +1,5 @@
-"""Tests for the openedx_lti_tool_plugin views module."""
-from unittest.mock import MagicMock, patch
+"""Tests views module."""
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from django.http.response import Http404
 from django.test import RequestFactory, TestCase, override_settings
@@ -7,10 +7,10 @@ from django.urls import reverse
 from pylti1p3.contrib.django import DjangoDbToolConf, DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
-from openedx_lti_tool_plugin.views import LtiToolBaseView, LtiToolJwksView, LtiToolLoginView
+from openedx_lti_tool_plugin.tests import MODULE_PATH
+from openedx_lti_tool_plugin.views import LtiToolJwksView, LtiToolLoginView
 
-MODULE_PATH = 'openedx_lti_tool_plugin.views'
-COURSE_KEY = 'random-course-key'
+MODULE_PATH = f'{MODULE_PATH}.views'
 
 
 class LtiViewMixin():
@@ -21,46 +21,6 @@ class LtiViewMixin():
         super().setUp()
         self.factory = RequestFactory()
         self.user = MagicMock(id='x', username='x', email='x@example.com', is_authenticated=True)
-
-
-class TestLtiToolBaseView(TestCase):
-    """Test LtiToolBaseView class."""
-
-    def setUp(self):
-        """Test fixtures setup."""
-        super().setUp()
-        self.view_class = LtiToolBaseView
-
-    @patch(f'{MODULE_PATH}.DjangoDbToolConf')
-    @patch(f'{MODULE_PATH}.DjangoCacheDataStorage')
-    @patch(f'{MODULE_PATH}.super')
-    def test_setup(
-        self,
-        super_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        tool_conf_mock: MagicMock,
-    ):
-        """Test `setup` method."""
-        request = MagicMock()
-        instance = self.view_class()
-
-        instance.setup(request)
-
-        super_mock.assert_called_once_with()
-        super_mock().setup.assert_called_once_with(request)
-        tool_conf_mock.assert_called_once_with()
-        tool_storage_mock.assert_called_once_with(cache_name='default')
-        self.assertEqual(instance.tool_config, tool_conf_mock())
-        self.assertEqual(instance.tool_storage, tool_storage_mock())
-
-    @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
-    def test_http_response_error(self, http_response_error_mock: MagicMock):
-        """Test `http_response_error` method with error message."""
-        message = 'Error message'
-        instance = self.view_class()
-
-        self.assertEqual(instance.http_response_error(message), http_response_error_mock.return_value)
-        http_response_error_mock.assert_called_once_with(f'LTI 1.3 {instance.__class__.__name__}: {message}')
 
 
 class TestLtiToolLoginView(LtiViewMixin, TestCase):
@@ -86,41 +46,38 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         post_mock.assert_called_once_with(request)
         self.assertEqual(response, post_mock())
 
-    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
-    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch.object(LtiToolLoginView, 'tool_storage', new_callable=PropertyMock)
+    @patch.object(LtiToolLoginView, 'tool_config', new_callable=PropertyMock)
     @patch.object(DjangoOIDCLogin, '__init__', return_value=None)
     @patch.object(DjangoOIDCLogin, 'redirect')
     def test_post_with_login_data(
         self,
         login_redirect_mock: MagicMock,
         login_init_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        tool_config_mock: MagicMock,
         tool_storage_mock: MagicMock,
     ):
-        """Test POST request with login data.
-
-        Args:
-            login_redirect_mock: Mocked DjangoOIDCLogin redirect method.
-            login_init_mock: Mocked DjangoOIDCLogin __init__ method.
-            tool_conf_mock: Mocked DjangoDbToolConf class.
-            tool_storage_mock: Mocked DjangoCacheDataStorage class.
-        """
+        """Test POST request with login data."""
         login_data = {'target_link_uri': 'random-launch-url'}
         request = self.factory.post(self.url, login_data)
         self.view_class.as_view()(request)
 
-        login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
+        login_init_mock.assert_called_once_with(
+            request,
+            tool_config_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
         login_redirect_mock.assert_called_once_with(login_data.get('target_link_uri'))
 
-    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
-    @patch('openedx_lti_tool_plugin.views._', return_value='')
-    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
-    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
+    @patch(f'{MODULE_PATH}._', return_value='')
+    @patch.object(LtiToolLoginView, 'tool_storage', new_callable=PropertyMock)
+    @patch.object(LtiToolLoginView, 'tool_config', new_callable=PropertyMock)
     @patch.object(DjangoOIDCLogin, '__init__', side_effect=LtiException)
     def test_post_raises_ltiexception(
         self,
         login_init_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        tool_config_mock: MagicMock,
         tool_storage_mock: MagicMock,
         gettext_mock: MagicMock,
         logged_http_response_bad_request_mock: MagicMock,
@@ -137,22 +94,26 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         request = self.factory.post(self.url)
         response = self.view_class.as_view()(request)
 
-        login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
+        login_init_mock.assert_called_once_with(
+            request,
+            tool_config_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
         self.assertRaises(LtiException, login_init_mock)
         gettext_mock.assert_called_once_with(self.error_message)
         logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())
         self.assertEqual(response.content, logged_http_response_bad_request_mock().content)
         self.assertEqual(response.status_code, logged_http_response_bad_request_mock().status_code)
 
-    @patch('openedx_lti_tool_plugin.views.LoggedHttpResponseBadRequest')
-    @patch('openedx_lti_tool_plugin.views._', return_value='')
-    @patch('openedx_lti_tool_plugin.views.DjangoCacheDataStorage')
-    @patch('openedx_lti_tool_plugin.views.DjangoDbToolConf')
+    @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
+    @patch(f'{MODULE_PATH}._', return_value='')
+    @patch.object(LtiToolLoginView, 'tool_storage', new_callable=PropertyMock)
+    @patch.object(LtiToolLoginView, 'tool_config', new_callable=PropertyMock)
     @patch.object(DjangoOIDCLogin, '__init__', side_effect=OIDCException)
     def test_post_raises_oidcexception(
         self,
         login_init_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        tool_config_mock: MagicMock,
         tool_storage_mock: MagicMock,
         gettext_mock: MagicMock,
         logged_http_response_bad_request_mock: MagicMock,
@@ -169,7 +130,11 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
         request = self.factory.post(self.url)
         response = self.view_class.as_view()(request)
 
-        login_init_mock.assert_called_once_with(request, tool_conf_mock(), launch_data_storage=tool_storage_mock())
+        login_init_mock.assert_called_once_with(
+            request,
+            tool_config_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
         self.assertRaises(OIDCException, login_init_mock)
         gettext_mock.assert_called_once_with(self.error_message)
         logged_http_response_bad_request_mock.assert_called_once_with(gettext_mock())

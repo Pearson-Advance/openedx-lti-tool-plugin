@@ -312,16 +312,16 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
-@patch.object(ResourceLinkLaunchView, 'tool_config', create=True)
+@patch.object(ResourceLinkLaunchView, 'tool_config', new_callable=PropertyMock)
 @patch(f'{MODULE_PATH}.CourseAccessConfiguration')
 class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchViewBaseTestCase):
-    """Test ResourceLinkLaunchView check_course_access_permission method."""
+    """Test ResourceLinkLaunchView.check_course_access_permission method."""
 
     def test_with_allowed_course_id(
-            self,
-            course_access_configuration_mock: MagicMock,
-            tool_config_mock: MagicMock,
-            course_access_configuration_switch_mock: MagicMock,
+        self,
+        course_access_configuration_mock: MagicMock,
+        tool_config_mock: MagicMock,
+        course_access_configuration_switch_mock: MagicMock,
     ):
         """Test with allowed course ID."""
         course_access_configuration_switch_mock.is_enabled.return_value = True
@@ -335,9 +335,9 @@ class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchVi
         self.view_class().check_course_access_permission(COURSE_ID, ISS, AUD)
 
         course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
-        tool_config_mock.get_lti_tool.assert_called_once_with(ISS, AUD)
+        tool_config_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
         course_access_configuration_mock.objects.filter.assert_called_once_with(
-            lti_tool=tool_config_mock.get_lti_tool(),
+            lti_tool=tool_config_mock().get_lti_tool(),
         )
         course_access_configuration_mock.objects.filter.return_value.first.assert_called_once_with()
         course_access_conf_queryset_mock.is_course_id_allowed.assert_called_once_with(COURSE_ID)
@@ -378,8 +378,9 @@ class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchVi
 
         with self.assertRaises(LtiToolLaunchException):
             self.view_class().check_course_access_permission(COURSE_ID, ISS, AUD)
+
         gettext_mock.assert_called_once_with(
-            f'Course access configuration for {tool_config_mock.get_lti_tool().title} not found.',
+            f'Course access configuration for {tool_config_mock().get_lti_tool().title} not found.',
         )
 
     @patch(f'{MODULE_PATH}._')

@@ -8,3 +8,5 @@ edx-opaque-keys           # Open edX course and XBlock identities API
 edx-toggles               # Library and utilities for implementing and reporting on feature toggles.
 celery                    # Asynchronous task execution library
 shortuuid                 # Library that generates concise, unambiguous, URL-safe UUIDs
+djangorestframework       # Django REST framework is a powerful and flexible toolkit for building Web APIs.
+edx-drf-extensions        # edX Django REST Framework Extensions
