@@ -70,7 +70,7 @@ LEARNING_MICROFRONTEND_URL = 'example.com'
 OLTITP_ENABLE_LTI_TOOL = True
 
 # Deep linking settings
-OLTITP_DEEP_LINKING_CONTENT_ITEMS_PROVIDER = None
+OLTITP_DEEP_LINKING_FORM_TEMPLATE = 'openedx_lti_tool_plugin/deep_linking/form.html'
 
 # Backend settings
 OLTITP_TEST_BACKEND_MODULE_PATH = 'openedx_lti_tool_plugin.tests.backends_for_tests'

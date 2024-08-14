@@ -2,6 +2,7 @@
 from typing import Union
 from uuid import uuid4
 
+from django.conf import settings
 from django.http import HttpResponse
 from django.http.request import HttpRequest
 from django.shortcuts import redirect, render
@@ -16,6 +17,7 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.deep_linking.utils import validate_deep_linking_message
+from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.views import LTIToolView
 
@@ -112,13 +114,11 @@ class DeepLinkingFormView(LTIToolView):
             # Render form template.
             return render(
                 request,
-                'openedx_lti_tool_plugin/deep_linking/form.html',
+                configuration_helpers().get_value(
+                    'OLTITP_DEEP_LINKING_FORM_TEMPLATE',
+                    settings.OLTITP_DEEP_LINKING_FORM_TEMPLATE,
+                ),
                 {
-                    'form': self.form_class(
-                        request=request,
-                        launch_data=message.get_launch_data(),
-                    ),
-                    'form_url': f'{app_config.name}:1.3:deep-linking:form',
                     'launch_id': launch_id,
                 },
             )
@@ -149,11 +149,7 @@ class DeepLinkingFormView(LTIToolView):
             # Validate message.
             validate_deep_linking_message(message)
             # Initialize form.
-            form = self.form_class(
-                request.POST,
-                request=request,
-                launch_data=message.get_launch_data(),
-            )
+            form = self.form_class(request.POST)
             # Validate form.
             if not form.is_valid():
                 raise DeepLinkingException(form.errors)
