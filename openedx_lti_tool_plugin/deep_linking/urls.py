@@ -5,7 +5,7 @@ Attributes:
     urlpatterns (list): URL patterns list.
 
 """
-from django.urls import path
+from django.urls import include, path
 
 from openedx_lti_tool_plugin.deep_linking import views
 
@@ -21,4 +21,5 @@ urlpatterns = [
         views.DeepLinkingFormView.as_view(),
         name='form',
     ),
+    path('api/', include('openedx_lti_tool_plugin.deep_linking.api.urls')),
 ]

@@ -1,4 +1,4 @@
-"""Views for openedx_lti_tool_plugin."""
+"""Django Views."""
 from typing import Any, Callable, TypeVar, Union
 
 from django.http import Http404, HttpResponseRedirect, JsonResponse
@@ -7,26 +7,31 @@ from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import View
-from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, DjangoOIDCLogin
+from pylti1p3.contrib.django import DjangoOIDCLogin
 from pylti1p3.exception import LtiException, OIDCException
 
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
+from openedx_lti_tool_plugin.mixins import LTIToolMixin
 from openedx_lti_tool_plugin.utils import is_plugin_enabled
 
 _ViewF = TypeVar('_ViewF', bound=Callable[..., Any])
 
 
-def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
-    """Modify the view function to raise 404 if LTI tool is not enabled.
+def requires_openedx_lti_tool_plugin_enabled(view_func: _ViewF) -> _ViewF:
+    """Make View require the openedx_lti_tool_plugin enabled.
+
+    This function decorator will modify a View function to
+    raise a Http404 exception if the plugin is not enabled.
 
     Args:
-        view_func: Wrapped view function.
+        view_func: View function.
 
     Returns:
         Wrapped view function.
 
     Raises:
-        Http404: LTI tool plugin is not enabled.
+        Http404: If plugin is disabled.
+
     """
     def wrapped_view(*args, **kwargs):
         if not is_plugin_enabled():
@@ -37,58 +42,13 @@ def requires_lti_enabled(view_func: _ViewF) -> _ViewF:
     return wrapped_view
 
 
-@method_decorator(requires_lti_enabled, name='dispatch')
-class LtiBaseView(View):
-    """Base LTI view initializing common attributes."""
-
-
-class LtiToolBaseView(LtiBaseView):
-    """Base LTI view initializing common LTI tool attributes.
-
-    Attributes:
-        tool_config (DjangoDbToolConf): pylti1.3 Tool Configuration.
-        tool_storage (DjangoCacheDataStorage): pylti1.3 Cache Storage.
-
-    .. _LTI 1.3 Advantage Tool implementation in Python - LTI Message Launches:
-        https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#lti-message-launches
-
-    """
-
-    tool_config = None
-    tool_storage = None
-
-    def setup(self, request: HttpRequest, *args: tuple, **kwargs: dict):
-        """Initialize attributes shared by all LTI views.
-
-        Args:
-            request: HTTP request object.
-            *args: Variable length argument list.
-            **kwargs: Arbitrary keyword arguments.
-
-        """
-        super().setup(request, *args, **kwargs)
-        self.tool_config = DjangoDbToolConf()
-        self.tool_storage = DjangoCacheDataStorage(cache_name='default')
-
-    def http_response_error(self, message: Union[str, Exception]) -> LoggedHttpResponseBadRequest:
-        """HTTP response with an error message.
-
-        This method will create a HTTP response error with an error message
-        prefixed with the LTI specification version and the view name of the error.
-
-        Args:
-            message: Error message string or Exception object.
-
-        Returns:
-            LoggedHttpResponseBadRequest object with error message
-                prefixed with LTI version and view name.
-
-        """
-        return LoggedHttpResponseBadRequest(f'LTI 1.3 {self.__class__.__name__}: {message}')
+@method_decorator(requires_openedx_lti_tool_plugin_enabled, name='dispatch')
+class LTIToolView(LTIToolMixin, View):
+    """LTI Tool View."""
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class LtiToolLoginView(LtiToolBaseView):
+class LtiToolLoginView(LTIToolView):
     """
     LTI 1.3 third-party login view.
 
@@ -129,7 +89,7 @@ class LtiToolLoginView(LtiToolBaseView):
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3: OIDC login failed: {exc}'))
 
 
-class LtiToolJwksView(LtiToolBaseView):
+class LtiToolJwksView(LTIToolView):
     """LTI 1.3 JSON Web Key Sets view."""
 
     def get(self, request: HttpRequest) -> JsonResponse:

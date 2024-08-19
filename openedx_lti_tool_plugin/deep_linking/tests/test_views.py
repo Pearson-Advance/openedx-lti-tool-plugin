@@ -2,7 +2,8 @@
 from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
 
-from django.test import RequestFactory, TestCase
+from django.http.response import Http404
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from pylti1p3.exception import LtiException
 
@@ -10,42 +11,9 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.deep_linking.exceptions import DeepLinkingException
 from openedx_lti_tool_plugin.deep_linking.forms import DeepLinkingForm
 from openedx_lti_tool_plugin.deep_linking.tests import MODULE_PATH
-from openedx_lti_tool_plugin.deep_linking.views import (
-    DeepLinkingFormView,
-    DeepLinkingView,
-    validate_deep_linking_message,
-)
+from openedx_lti_tool_plugin.deep_linking.views import DeepLinkingFormView, DeepLinkingView
 
 MODULE_PATH = f'{MODULE_PATH}.views'
-
-
-class TestValidateDeepLinkingMessage(TestCase):
-    """Test validate_deep_linking_message function."""
-
-    def test_with_deep_linking_request_message(self: MagicMock):
-        """Test with deep linking request message (happy path)."""
-        message = MagicMock()
-        message.is_deep_link_launch.return_value = True
-
-        validate_deep_linking_message(message)
-
-        message.is_deep_link_launch.assert_called_once_with()
-
-    @patch(f'{MODULE_PATH}._', return_value='')
-    def test_without_deep_linking_request_message(
-        self: MagicMock,
-        gettext_mock: MagicMock,
-    ):
-        """Test without deep linking request message."""
-        message = MagicMock()
-        message.is_deep_link_launch.return_value = False
-
-        with self.assertRaises(DeepLinkingException) as ctxm:
-            validate_deep_linking_message(message)
-
-        message.is_deep_link_launch.assert_called_once_with()
-        gettext_mock.assert_called_once_with('Message type is not LtiDeepLinkingRequest.')
-        self.assertEqual(gettext_mock(), str(ctxm.exception))
 
 
 @patch.object(DeepLinkingView, 'tool_config', new_callable=PropertyMock)
@@ -60,9 +28,7 @@ class TestDeepLinkingViewPost(TestCase):
         """Set up test fixtures."""
         super().setUp()
         self.view_class = DeepLinkingView
-        self.factory = RequestFactory()
-        self.url = reverse('1.3:deep-linking:root')
-        self.request = self.factory.post(self.url)
+        self.request = RequestFactory().post(reverse('1.3:deep-linking:root'))
 
     def test_with_deep_linking_request(
         self,
@@ -144,6 +110,12 @@ class TestDeepLinkingViewPost(TestCase):
         redirect_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
 
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_with_lti_disabled(self, *args):
+        """Test raise 404 response when plugin is disabled."""
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.request)
+
 
 class TestDeepLinkingFormView(TestCase):
     """Test DeepLinkingFormView class."""
@@ -151,30 +123,6 @@ class TestDeepLinkingFormView(TestCase):
     def test_class_attributes(self):
         """Test class attributes."""
         self.assertEqual(DeepLinkingFormView.form_class, DeepLinkingForm)
-
-    @patch.object(DeepLinkingFormView, 'tool_config', new_callable=PropertyMock)
-    @patch.object(DeepLinkingFormView, 'tool_storage', new_callable=PropertyMock)
-    @patch(f'{MODULE_PATH}.DjangoMessageLaunch')
-    def test_get_message_from_cache(
-        self,
-        message_launch_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        tool_conf_mock: MagicMock,
-    ):
-        """Test get_message_from_cache method."""
-        request = MagicMock()
-        launch_id = uuid4()
-
-        self.assertEqual(
-            DeepLinkingFormView().get_message_from_cache(request, launch_id),
-            message_launch_mock.from_cache.return_value,
-        )
-        message_launch_mock.from_cache.assert_called_once_with(
-            f'lti1p3-launch-{launch_id}',
-            request,
-            tool_conf_mock(),
-            launch_data_storage=tool_storage_mock(),
-        )
 
 
 @patch.object(DeepLinkingFormView, 'get_message_from_cache')
@@ -187,10 +135,10 @@ class TestDeepLinkingFormViewGet(TestCase):
         """Set up test fixtures."""
         super().setUp()
         self.view_class = DeepLinkingFormView
-        self.factory = RequestFactory()
         self.launch_id = uuid4()
-        self.url = reverse('1.3:deep-linking:form', args=[self.launch_id])
-        self.request = self.factory.get(self.url)
+        self.request = RequestFactory().get(
+            reverse('1.3:deep-linking:form', args=[self.launch_id]),
+        )
 
     @patch(f'{MODULE_PATH}.render')
     def test_with_deep_linking_request(
@@ -266,6 +214,12 @@ class TestDeepLinkingFormViewGet(TestCase):
         form_class_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
 
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_with_lti_disabled(self, *args):
+        """Test raise 404 response when plugin is disabled."""
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.request)
+
 
 @patch.object(DeepLinkingFormView, 'get_message_from_cache')
 @patch(f'{MODULE_PATH}.validate_deep_linking_message')
@@ -277,10 +231,10 @@ class TestDeepLinkingFormViewPost(TestCase):
         """Set up test fixtures."""
         super().setUp()
         self.view_class = DeepLinkingFormView
-        self.factory = RequestFactory()
         self.launch_id = uuid4()
-        self.url = reverse('1.3:deep-linking:form', args=[self.launch_id])
-        self.request = self.factory.post(self.url)
+        self.request = RequestFactory().post(
+            reverse('1.3:deep-linking:form', args=[self.launch_id]),
+        )
 
     @patch(f'{MODULE_PATH}.HttpResponse')
     def test_with_deep_linking_request(
@@ -398,3 +352,9 @@ class TestDeepLinkingFormViewPost(TestCase):
         get_message_from_cache_mock().get_deep_link.assert_not_called()
         get_message_from_cache_mock().get_deep_link().output_response_form.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
+
+    @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
+    def test_with_lti_disabled(self, *args):
+        """Test raise 404 response when plugin is disabled."""
+        with self.assertRaises(Http404):
+            self.view_class.as_view()(self.request)

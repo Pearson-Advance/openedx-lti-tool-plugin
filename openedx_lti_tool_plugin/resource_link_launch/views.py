@@ -31,7 +31,7 @@ from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
 from openedx_lti_tool_plugin.resource_link_launch.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.utils import get_identity_claims
-from openedx_lti_tool_plugin.views import LtiToolBaseView
+from openedx_lti_tool_plugin.views import LTIToolView
 from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ AGS_SCORE_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/score'
 
 
 @method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
-class ResourceLinkLaunchView(LtiToolBaseView):
+class ResourceLinkLaunchView(LTIToolView):
     """Resource Link Launch View.
 
     This view handles the LTI resource link launch request workflow.

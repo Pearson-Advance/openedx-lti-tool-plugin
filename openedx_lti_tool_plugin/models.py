@@ -1,14 +1,14 @@
 """Django Model."""
 import json
 import uuid
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 import shortuuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
@@ -17,6 +17,7 @@ from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.edxapp_wrapper.learning_sequences import course_context
+from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
 from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 
@@ -274,10 +275,10 @@ class CourseAccessConfiguration(models.Model):
         return f'<CourseAccessConfiguration, ID: {self.id}>'
 
 
-class CourseContextManager(models.Manager):
-    """CourseContext Model Manager."""
+class CourseContextQuerySet(models.QuerySet):
+    """CourseContext QuerySet."""
 
-    def all_for_lti_tool(self, iss: str, aud: str) -> Optional[QuerySet]:
+    def all_for_lti_tool(self, iss: str, aud: str) -> models.QuerySet:
         """Query all CourseContext objects available for an LtiTool.
 
         Args:
@@ -312,11 +313,34 @@ class CourseContextManager(models.Manager):
             ),
         )
 
+    def filter_by_site_orgs(self) -> models.QuerySet:
+        """Filter QuerySet by site configuration orgs.
+
+        Returns:
+            QuerySet with CourseContext objects with an org matching the
+            site configuration org list if the site configuration
+            `course_org_filter` setting is set.
+
+            An unfiltered QuerySet if the site configuration
+            `course_org_filter` setting is not set
+
+        """
+        if site_orgs := configuration_helpers().get_current_site_orgs():
+            return self.filter(
+                pk__in=[
+                    course_context.pk
+                    for course_context in self
+                    if course_context.org in site_orgs
+                ]
+            )
+
+        return self
+
 
 class CourseContext(course_context()):
     """CourseContext Model."""
 
-    objects = CourseContextManager()
+    objects = CourseContextQuerySet.as_manager()
 
     class Meta:
         """Model metadata options."""
@@ -327,6 +351,11 @@ class CourseContext(course_context()):
     def course_id(self):
         """str: Course ID."""
         return self.learning_context.context_key
+
+    @property
+    def org(self):
+        """str: Organization."""
+        return self.course_id.org
 
     @property
     def title(self):
