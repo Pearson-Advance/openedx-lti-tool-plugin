@@ -1,11 +1,81 @@
 {% extends 'openedx_lti_tool_plugin/base.html' %}
 {% load i18n %}
 
-{% block title %}Deep Linking{% endblock %}
-{% block content %}
-<form id='deepLinkingForm' action='{% url form_url launch_id=launch_id %}' method='post'>
-  {% csrf_token %}
-  {{ form }}
-  <input type='submit' value='{% translate "Submit" %}'>
-</form>
+{% block title %}{% translate 'Deep Linking UI' %}{% endblock %}
+
+{% block head %}
+{{ block.super }}
+<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/css/tabulator.min.css' integrity='sha512-RYFH4FFdhD/FdA+OVEbFVqd5ifR+Dnx2M7eWcmkcMexlIoxNgm89ieeVyHYb8xChuYBtbrasMTlo02cLnidjtQ==' crossorigin='anonymous' referrerpolicy='no-referrer' />
+<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/css/tabulator_bootstrap4.min.css' integrity='sha512-M8fQtCoI4fno1+6crM7PKDbguzHFchIAbYpaATMNkZcL+e9sGOM+wMVF9WDEXbnPV9qrvk5HUY7wcSi9oFfJaA==' crossorigin='anonymous' referrerpolicy='no-referrer' />
+{% endblock %}
+
+{% block body_content %}
+{{ block.super }}
+<div class='container my-4'>
+  <div class='row'>
+    <div class='col'>
+      <form
+      id='deepLinkingForm'
+      action='{% url "openedx_lti_tool_plugin:1.3:deep-linking:form" launch_id=launch_id %}'
+      method='post'>
+        {% csrf_token %}
+        <div id='deepLinkingFormTable' class='mb-4'></div>
+        <input type='submit' class='btn btn-primary' value='{% translate "Submit" %}'>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_js %}
+{{ block.super }}
+<script src='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/js/tabulator.min.js' integrity='sha512-orG5sHJgUiyGjeUBBK56+piLmrCEP7r5Tz9efhJ/C7F1Hdi8O33gQxqZThRb/PSAg9T5seRewR2pw5lTaZPTMQ==' crossorigin='anonymous' referrerpolicy='no-referrer'></script>
+<script>
+  // Set table pagination size.
+  const paginationSize = 25;
+  // Initialize Tabulator.
+  const table = new Tabulator('#deepLinkingFormTable', {
+    ajaxURL: '{% url "openedx_lti_tool_plugin:1.3:deep-linking:api:v1:course-content-item-list" launch_id=launch_id %}',
+    // Modify AJAX response data.
+    ajaxResponse: function(url, params, response){
+      return Object.assign({}, {
+        // Add total number of pages to response data.
+        last_page: Math.floor((response.count + paginationSize - 1) / paginationSize),
+        // Rename response `results` key to `data` key.
+        data: response.results,
+      });
+    },
+    // Modify default query params.
+    dataSendParams:{
+      'size':'page_size',
+    },
+    // Set column data.
+    columns: [
+      {title: 'Title', field: 'title'},
+      {title: 'URL', field: 'url'},
+    ],
+    // Make rows selectable.
+    selectableRows: true,
+    rowHeader:{
+      formatter: 'rowSelection',
+      titleFormatter: 'rowSelection',
+      headerSort: false,
+      resizable: false,
+      frozen: true,
+      headerHozAlign: 'center',
+      hozAlign: 'center',
+    },
+    // Enable table pagination.
+    progressiveLoad: 'load',
+    paginationSize: paginationSize,
+    // Fit columns to data and stretch last column.
+    layout: 'fitDataStretch',
+  });
+  // Modify formData before submit.
+  document.querySelector('#deepLinkingForm').addEventListener('formdata', (e) => {
+    const formData = e.formData;
+    // Set form `content_items` key value to a JSON string with selected rows data.
+    formData.set('content_items', JSON.stringify(table.getSelectedData()));
+  });
+</script>
 {% endblock %}
