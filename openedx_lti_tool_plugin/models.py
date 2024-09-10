@@ -1,5 +1,6 @@
 """Django Model."""
 import json
+import re
 import uuid
 from typing import TypeVar
 
@@ -110,13 +111,13 @@ class LtiProfile(models.Model):
     @property
     def name(self) -> str:
         """str: Name."""
-        if self.given_name and self.middle_name and self.family_name:
-            return f'{self.given_name} {self.middle_name} {self.family_name}'
-
-        if self.given_name and self.family_name:
-            return f'{self.given_name} {self.family_name}'
-
-        return self.given_name
+        # Return the name from pii if available
+        if name := self.pii.get('name', ''):
+            return name
+        # Create list with available name parts.
+        parts = [self.given_name, self.middle_name, self.family_name]
+        # Construct the name based on list of available name parts.
+        return ' '.join(part for part in parts if part)
 
     @property
     def username(self) -> str:
@@ -124,15 +125,13 @@ class LtiProfile(models.Model):
         # Get username from user.
         if getattr(self, 'user', None):
             return self.user.username
-        # Generate username string without name.
+        # Generate username with short UUID.
         if not self.given_name:
             return f'{self.short_uuid}'
-        # Generate username string with name.
-        return (
-            f'{self.given_name.lower()[:30]}'
-            f'{self.family_name.lower()[:1]}'
-            f'.{self.short_uuid}'
-        )
+        # Get cleaned unicode name.
+        name = re.sub(r'\W+', '', f'{self.given_name[:30]}{self.family_name[:1]}')
+        # Generate username with lowercase name and short UUID.
+        return f'{name.lower()}.{self.short_uuid}'
 
     @property
     def email(self) -> str:

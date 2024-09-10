@@ -1,5 +1,6 @@
 """Test models module."""
 import random
+import re
 import string
 import uuid
 from unittest.mock import MagicMock, PropertyMock, call, patch
@@ -22,7 +23,9 @@ NAME = 'random-name'
 GIVEN_NAME = 'random-given-name'
 MIDDLE_NAME = 'random-middle-name'
 FAMILY_NAME = 'random-family-name'
-GIVEN_NAME_LARGER = ''.join(random.choices(string.ascii_lowercase, k=300))
+GIVEN_NAME_LARGER = ''.join(random.choices([string.ascii_lowercase, string.punctuation], k=300))
+UNICODE_USERNAME_GIVEN_NAME = re.sub(r'\W+', '', f'{GIVEN_NAME_LARGER[:30]}')
+UNICODE_USERNAME_NAME = re.sub(r'\W+', '', f'{GIVEN_NAME_LARGER[:30]}{FAMILY_NAME[:1]}')
 
 
 @ddt.ddt
@@ -202,6 +205,12 @@ class TestLtiProfile(TestCase):
     @ddt.data(
         (
             {
+                'name': NAME,
+            },
+            NAME,
+        ),
+        (
+            {
                 'given_name': GIVEN_NAME,
                 'middle_name': MIDDLE_NAME,
                 'family_name': FAMILY_NAME,
@@ -231,7 +240,7 @@ class TestLtiProfile(TestCase):
             {
                 'given_name': GIVEN_NAME_LARGER,
             },
-            f'{GIVEN_NAME_LARGER.lower()[:30]}.',
+            f'{UNICODE_USERNAME_GIVEN_NAME.lower()}.',
         ),
         (
             False,
@@ -239,7 +248,7 @@ class TestLtiProfile(TestCase):
                 'given_name': GIVEN_NAME_LARGER,
                 'family_name': FAMILY_NAME,
             },
-            f'{GIVEN_NAME_LARGER.lower()[:30]}{FAMILY_NAME.lower()[:1]}.',
+            f'{UNICODE_USERNAME_NAME.lower()}.',
         ),
         (False, {}, ''),
         (True, {}, ''),
