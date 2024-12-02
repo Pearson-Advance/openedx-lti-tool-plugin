@@ -270,7 +270,7 @@ class TestLtiProfile(TestCase):
         """Test email property."""
         self.assertEqual(
             self.lti_profile.email,
-            f'{self.lti_profile.uuid}@{app_config.name}',
+            f'{self.lti_profile.uuid}@{app_config.domain_name}',
         )
 
     def test_str_method(self):

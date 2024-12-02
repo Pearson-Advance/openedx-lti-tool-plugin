@@ -3,9 +3,21 @@ from django.apps import AppConfig
 
 
 class OpenEdxLtiToolPluginConfig(AppConfig):
-    """Configuration for the openedx_lti_tool_plugin Django application."""
+    """Open edX LTI Tool Plugin application configuration.
+
+    Attributes:
+        name (str): Application name.
+        domain_name (str): Application domain name.
+        verbose_name (str): Vebose application name.
+        plugin_app (dict): Open edX plugin application settings.
+
+    ...edx-django-utils - Django App Plugins:
+        https://github.com/openedx/edx-django-utils/tree/master/edx_django_utils/plugins
+
+    """
 
     name = 'openedx_lti_tool_plugin'
+    domain_name = 'openedx-lti-tool-plugin.internal'
     verbose_name = 'Open edX LTI Tool Plugin'
     plugin_app = {
         'url_config': {

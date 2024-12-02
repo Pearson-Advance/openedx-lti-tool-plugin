@@ -136,11 +136,12 @@ class LtiProfile(models.Model):
     @property
     def email(self) -> str:
         """str: Email address."""
-        # Get email from user.
+        # Return email from `user` attribute.
         if getattr(self, 'user', None):
             return self.user.email
-        # Generate email string.
-        return f'{self.uuid}@{app_config.name}'
+
+        # Build email using UUID and app domain_name.
+        return f'{self.uuid}@{app_config.domain_name}'
 
     def user_collision(self) -> bool:
         """Check for user collision.

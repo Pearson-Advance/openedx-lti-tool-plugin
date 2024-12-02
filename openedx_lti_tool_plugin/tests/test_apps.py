@@ -1,21 +1,18 @@
-"""Tests for the openedx_lti_tool_plugin apps module."""
+"""Tests apps module."""
 from django.test import TestCase
 from jsonschema import validate
 
-from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as AppConfig
+from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig
 
 
 class TestOpenEdxLtiToolPluginConfig(TestCase):
-    """Test openedx_lti_tool_plugin app config."""
+    """Test OpenEdxLtiToolPluginConfig class."""
 
-    def test_plugin_app_schema(self):
-        """
-        Test class plugin_app configuration schema.
+    app_config = OpenEdxLtiToolPluginConfig
 
-        For more information on this test, see:
-        https://python-jsonschema.readthedocs.io/en/stable/
-        """
-        url_config_properties = {
+    def test_plugin_app_jsonschema(self):
+        """Test `plugin_app` attribute JSON Schema."""
+        url_config = {
             'type': 'object',
             'required': ['regex', 'namespace', 'relative_path'],
             'properties': {
@@ -24,7 +21,7 @@ class TestOpenEdxLtiToolPluginConfig(TestCase):
                 'relative_path': {'type': 'string'},
             },
         }
-        settings_config_properties = {
+        settings_config = {
             'type': 'object',
             'required': ['common', 'production', 'test'],
             'patternProperties': {
@@ -42,16 +39,17 @@ class TestOpenEdxLtiToolPluginConfig(TestCase):
                 'url_config': {
                     'type': 'object',
                     'required': ['lms.djangoapp'],
-                    'patternProperties': {'^.*$': url_config_properties},
+                    'patternProperties': {'^.*$': url_config},
                 },
                 'settings_config': {
                     'type': 'object',
                     'required': ['lms.djangoapp'],
-                    'patternProperties': {'^.*$': settings_config_properties},
+                    'patternProperties': {'^.*$': settings_config},
                 },
             },
         }
 
-        validate(instance=AppConfig.plugin_app, schema=schema)
-        self.assertEqual(AppConfig.name, 'openedx_lti_tool_plugin')
-        self.assertEqual(AppConfig.verbose_name, 'Open edX LTI Tool Plugin')
+        validate(instance=self.app_config.plugin_app, schema=schema)
+        self.assertEqual(self.app_config.name, 'openedx_lti_tool_plugin')
+        self.assertEqual(self.app_config.domain_name, 'openedx-lti-tool-plugin.internal')
+        self.assertEqual(self.app_config.verbose_name, 'Open edX LTI Tool Plugin')
