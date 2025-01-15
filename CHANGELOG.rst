@@ -16,6 +16,14 @@ Unreleased
 
 *
 
+0.1.8 - 2025-01-15
+********************
+
+Changed
+=======
+
+- Improve LtiProfile username generation
+
 0.1.7 - 2024-12-02
 ********************
 
