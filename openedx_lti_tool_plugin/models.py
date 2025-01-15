@@ -111,27 +111,33 @@ class LtiProfile(models.Model):
     @property
     def name(self) -> str:
         """str: Name."""
-        # Return the name from pii if available
+        # Return name from `pii` field.
         if name := self.pii.get('name', ''):
             return name
-        # Create list with available name parts.
-        parts = [self.given_name, self.middle_name, self.family_name]
-        # Construct the name based on list of available name parts.
-        return ' '.join(part for part in parts if part)
+
+        # Build list with available name parts.
+        name_parts = [self.given_name, self.middle_name, self.family_name]
+
+        # Build name using list of available name parts.
+        return ' '.join(part for part in name_parts if part)
 
     @property
     def username(self) -> str:
         """str: Username."""
-        # Get username from user.
+        # Return username from `user` attribute.
         if getattr(self, 'user', None):
             return self.user.username
-        # Generate username with short UUID.
-        if not self.given_name:
+
+        try:
+            # Return username using `name` and short UUID.
+            name = self.name.split()
+            name = name[0][:8].lower()
+            name = re.sub(r'[\W_]+', '', name)
+
+            return f'{name}.{self.short_uuid}'
+        except IndexError:
+            # Return username using short UUID.
             return f'{self.short_uuid}'
-        # Get cleaned unicode name.
-        name = re.sub(r'\W+', '', f'{self.given_name[:30]}{self.family_name[:1]}')
-        # Generate username with lowercase name and short UUID.
-        return f'{name.lower()}.{self.short_uuid}'
 
     @property
     def email(self) -> str:

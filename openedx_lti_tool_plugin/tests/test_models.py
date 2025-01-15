@@ -24,8 +24,7 @@ GIVEN_NAME = 'random-given-name'
 MIDDLE_NAME = 'random-middle-name'
 FAMILY_NAME = 'random-family-name'
 GIVEN_NAME_LARGER = ''.join(random.choices([string.ascii_lowercase, string.punctuation], k=300))
-UNICODE_USERNAME_GIVEN_NAME = re.sub(r'\W+', '', f'{GIVEN_NAME_LARGER[:30]}')
-UNICODE_USERNAME_NAME = re.sub(r'\W+', '', f'{GIVEN_NAME_LARGER[:30]}{FAMILY_NAME[:1]}')
+UNICODE_USERNAME_GIVEN_NAME = re.sub(r'[\W_]+', '', f'{GIVEN_NAME_LARGER[:8]}').lower()
 
 
 @ddt.ddt
@@ -235,23 +234,19 @@ class TestLtiProfile(TestCase):
         self.assertEqual(self.lti_profile.name, name_return)
 
     @ddt.data(
-        (
-            False,
-            {
-                'given_name': GIVEN_NAME_LARGER,
-            },
-            f'{UNICODE_USERNAME_GIVEN_NAME.lower()}.',
-        ),
-        (
-            False,
-            {
-                'given_name': GIVEN_NAME_LARGER,
-                'family_name': FAMILY_NAME,
-            },
-            f'{UNICODE_USERNAME_NAME.lower()}.',
-        ),
         (False, {}, ''),
+        (False, {'name': ''}, ''),
+        (
+            False,
+            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
+            f'{UNICODE_USERNAME_GIVEN_NAME}.',
+        ),
         (True, {}, ''),
+        (
+            True,
+            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
+            '',
+        ),
     )
     @ddt.unpack
     def test_username_property(self, has_user: bool, name_data: dict, name_return: str):
