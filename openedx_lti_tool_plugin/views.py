@@ -5,6 +5,7 @@ from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.http.request import HttpRequest
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import View
 from pylti1p3.contrib.django import DjangoOIDCLogin
@@ -47,7 +48,7 @@ class LTIToolView(LTIToolMixin, View):
     """LTI Tool View."""
 
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
 class LtiToolLoginView(LTIToolView):
     """
     LTI 1.3 third-party login view.

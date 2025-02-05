@@ -69,6 +69,7 @@ class DeepLinkingView(LTIToolView):
             return self.http_response_error(exc)
 
 
+@method_decorator(xframe_options_exempt, name='dispatch')
 class DeepLinkingFormView(LTIToolView):
     """Deep Linking Form View.
 
