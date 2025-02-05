@@ -50,8 +50,10 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
     @patch.object(LtiToolLoginView, 'tool_config', new_callable=PropertyMock)
     @patch.object(DjangoOIDCLogin, '__init__', return_value=None)
     @patch.object(DjangoOIDCLogin, 'redirect')
+    @patch.object(DjangoOIDCLogin, 'enable_check_cookies')
     def test_post_with_login_data(
         self,
+        enable_check_cookies_mock: MagicMock,
         login_redirect_mock: MagicMock,
         login_init_mock: MagicMock,
         tool_config_mock: MagicMock,
@@ -67,6 +69,7 @@ class TestLtiToolLoginView(LtiViewMixin, TestCase):
             tool_config_mock(),
             launch_data_storage=tool_storage_mock(),
         )
+        enable_check_cookies_mock.assert_called_once_with()
         login_redirect_mock.assert_called_once_with(login_data.get('target_link_uri'))
 
     @patch(f'{MODULE_PATH}.LoggedHttpResponseBadRequest')
