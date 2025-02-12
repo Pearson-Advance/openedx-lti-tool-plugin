@@ -20,6 +20,12 @@ class DeepLinkingForm(forms.Form):
                 'type': {'type': 'string'},
                 'url': {'type': 'string'},
                 'title': {'type': 'string'},
+                'custom': {
+                    'type': 'object',
+                    'properties': {
+                        'resourceId': {'type': 'string'},
+                    },
+                },
             },
             'additionalProperties': True,
         },
@@ -49,9 +55,10 @@ class DeepLinkingForm(forms.Form):
 
         for content_item in self.cleaned_data.get('content_items', []):
             deep_link_resource = DeepLinkResource()
-            deep_link_resource.set_type(content_item.get('type'))
-            deep_link_resource.set_title(content_item.get('title'))
-            deep_link_resource.set_url(content_item.get('url'))
+            deep_link_resource.set_type(content_item.get('type', ''))
+            deep_link_resource.set_title(content_item.get('title', ''))
+            deep_link_resource.set_url(content_item.get('url', ''))
+            deep_link_resource.set_custom_params(content_item.get('custom', {}))
             deep_link_resources.append(deep_link_resource)
 
         self.cleaned_data['deep_link_resources'] = deep_link_resources

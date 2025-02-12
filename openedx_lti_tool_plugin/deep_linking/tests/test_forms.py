@@ -20,6 +20,9 @@ class TestDeepLinkingForm(TestCase):
             'type': 'test-type',
             'url': 'tset-title',
             'title': 'http://test.com',
+            'custom': {
+                'resourceId': 'test-resource-id',
+            },
         }
 
     def test_class_attributes(self):
@@ -34,6 +37,12 @@ class TestDeepLinkingForm(TestCase):
                         'type': {'type': 'string'},
                         'url': {'type': 'string'},
                         'title': {'type': 'string'},
+                        'custom': {
+                            'type': 'object',
+                            'properties': {
+                                'resourceId': {'type': 'string'},
+                            },
+                        },
                     },
                     'additionalProperties': True,
                 },
@@ -62,4 +71,7 @@ class TestDeepLinkingForm(TestCase):
         )
         deep_link_resource_mock().set_url.assert_called_once_with(
             self.content_item['url'],
+        )
+        deep_link_resource_mock().set_custom_params.assert_called_once_with(
+            self.content_item['custom'],
         )

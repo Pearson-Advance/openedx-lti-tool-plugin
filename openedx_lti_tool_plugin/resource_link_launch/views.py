@@ -1,12 +1,13 @@
 """Django Views.
 
 Attributes:
-    AGS_CLAIM_ENDPOINT (str): LTI AGS endpoint claim key.
-    AGS_SCORE_SCOPE (str): LTI AGS score scope claim key.
+    AGS_CLAIM_ENDPOINT (str): LTI AGS endpoint claim name.
+    AGS_SCORE_SCOPE (str): LTI AGS score scope claim name.
+    CUSTOM_CLAIM (str): Custom claim name.
 
 """
 import logging
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login
@@ -18,6 +19,7 @@ from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
+from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey, UsageKey
 from pylti1p3.contrib.django import DjangoMessageLaunch
 from pylti1p3.exception import LtiException
@@ -37,6 +39,7 @@ from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_
 log = logging.getLogger(__name__)
 AGS_CLAIM_ENDPOINT = 'https://purl.imsglobal.org/spec/lti-ags/claim/endpoint'
 AGS_SCORE_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/score'
+CUSTOM_CLAIM = 'https://purl.imsglobal.org/spec/lti/claim/custom'
 
 
 @method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
@@ -56,8 +59,7 @@ class ResourceLinkLaunchView(LTIToolView):
     def post(
         self,
         request: HttpRequest,
-        course_id: str,
-        usage_key_string: str = '',
+        resource_id: str = '',
     ) -> Union[HttpResponse, LoggedHttpResponseBadRequest]:
         """HTTP POST request method.
 
@@ -65,8 +67,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Args:
             request: HttpRequest object.
-            course_id: Course ID string.
-            usage_key_string: Usage key string of the component or unit.
+            resource_id: Resource ID string.
 
         Returns:
             HttpResponse with resource or LoggedHttpResponseBadRequest.
@@ -99,10 +100,16 @@ class ResourceLinkLaunchView(LTIToolView):
                 )
             # Get launch data.
             launch_data = launch_message.get_launch_data()
+            # Get resource ID.
+            resource_id = self.get_resource_id(resource_id, launch_data.get(CUSTOM_CLAIM, {}))
+            # Get CourseKey and UsageKey from resource ID.
+            course_key, usage_key = self.get_opaque_keys(resource_id)
+            # Validate CourseKey and UsageKey.
+            self.validate_opaque_keys(course_key, usage_key, resource_id)
             # Get identity claims from launch data.
             iss, aud, sub, pii = get_identity_claims(launch_data)
             # Check course access permission.
-            self.check_course_access_permission(course_id, iss, aud)
+            self.check_course_access_permission(str(course_key), iss, aud)
             # Update or create LtiProfile.
             lti_profile, _created = LtiProfile.objects.update_or_create(
                 platform_id=iss,
@@ -113,25 +120,111 @@ class ResourceLinkLaunchView(LTIToolView):
             # Authenticate and login user.
             edx_user = self.authenticate_and_login(request, iss, aud, sub)
             # Enroll user.
-            self.enroll(request, edx_user, CourseKey.from_string(course_id))
+            self.enroll(request, edx_user, course_key)
             # Get launch response.
-            resource_response, context_key = self.get_launch_response(
+            response = self.get_launch_response(
                 request,
                 edx_user,
-                course_id,
-                usage_key_string,
+                course_key,
+                usage_key,
             )
             # Handle AGS.
             self.handle_ags(
                 launch_message,
                 launch_data,
                 lti_profile,
-                context_key,
+                resource_id,
             )
 
-            return resource_response
+            return response
         except (LtiException, LtiToolLaunchException) as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Resource Link Launch: {exc}'))
+
+    @staticmethod
+    def get_resource_id(resource_id: str, custom_parameters: dict) -> str:
+        """Get resource ID.
+
+        Obtain resource ID from `resource_id` or LTI launch custom parameters.
+
+        Args:
+            resource_id: Resource ID string.
+            custom_parameters: LTI launch custom parameters dictionary.
+
+        Returns:
+            Resource ID string.
+
+        """
+        return resource_id or custom_parameters.get('resourceId', '')
+
+    @staticmethod
+    def get_opaque_keys(
+        resource_id: str,
+    ) -> Tuple[Optional[CourseKey], Optional[UsageKey]]:
+        """Get OpaqueKey(s) from resource ID.
+
+        This function will obtain a CourseKey or OpaqueKey
+        from the `resource_id` obtained from the LTI Resource Link Launch.
+
+        Args:
+            resource_id: Resource ID string.
+
+        Raises:
+            LtiToolLaunchException: If CourseKey cannot be obtained from `resource_id`.
+
+        Returns:
+            Tuple with CourseKey, UsageKey or None.
+
+        """
+        course_key = None
+        usage_key = None
+
+        # Extract CourseKey from resource ID.
+        try:
+            course_key = CourseKey.from_string(resource_id)
+        except InvalidKeyError:
+            pass
+
+        # Extract UsageKey from resource ID.
+        try:
+            usage_key = UsageKey.from_string(resource_id)
+            course_key = usage_key.course_key
+        except InvalidKeyError:
+            pass
+
+        return course_key, usage_key
+
+    @staticmethod
+    def validate_opaque_keys(
+        course_key: Optional[CourseKey],
+        usage_key: Optional[UsageKey],
+        resource_id: str,
+    ):
+        """Validate OpaqueKey(s).
+
+        Args:
+            course_key: CourseKey object or None.
+            usage_key: UsageKey object or None.
+            resource_id: Resource ID string.
+
+        Raises:
+            LtiToolLaunchException: If `course_key` is not an instance of CourseKey
+                If `usage_key` is an instance of UsageKey and `usage_key.block_type`
+                is `chapter`, `sequential` or `course`.
+
+        """
+        # Check CourseKey exists.
+        if not course_key:
+            raise LtiToolLaunchException(
+                _(f'CourseKey not found from resource ID: {resource_id}'),
+            )
+        # Validate UsageKey XBlock type if any.
+        if (
+            usage_key
+            and usage_key.block_type in ['chapter', 'sequential', 'course']
+        ):
+            raise LtiToolLaunchException(
+                _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),
+            )
 
     def check_course_access_permission(self, course_id: str, iss: str, aud: str):
         """Check course access permission.
@@ -230,39 +323,43 @@ class ResourceLinkLaunchView(LTIToolView):
         self,
         request: HttpRequest,
         edx_user: UserT,
-        course_id: str,
-        usage_key_string: str = '',
+        course_key: CourseKey,
+        usage_key: Optional[UsageKey],
     ) -> Tuple[HttpResponse, str]:
-        """Get launch response.
+        """Get LTI Resource Link Launch Response.
 
-        This method obtains the launch response, if the `usage_key_string` argument
-        is equal to None the method will return a response for a course launch else
-        it will return a response for a unit or component launch.
+        This method builds a HTTP 302 Response to the View
+        where the learner will interact with the requested resource.
 
-        The JWT authentication cookies for the Open edX platform are also added to
-        the launch response.
+        If `usage_key` is present and valid the learner will be redirected to
+        the `render_xblock` URL path to the requested UsageKey.
+
+        If no valid `usage_key` is present and `course_key` is an instance
+        of CourseKey, the learner is redirected to the Learning MFE.
+
+        The JWT authentication cookies for Open edX are also added to the response.
 
         Args:
             request: HTTPRequest object.
             edx_user: User instance.
-            course_id: Course ID string.
-            usage_key_string: Usage key string of a unit or component.
+            course_key: CourseKey object.
+            usage_key: UsageKey object or None.
 
         Returns:
-            A tuple containing a HTTP 302 response corresponding to the
-            requested launch resource (course, unit or component) and a context key.
+            A HTTP 302 response corresponding to the requested
+            resource (course, vertical or problem).
 
         """
-        # Get course launch response.
-        if not usage_key_string:
-            context_key = course_id
-            response = self.get_course_launch_response(course_id)
-        # Get unit/component launch response.
-        else:
-            context_key = usage_key_string
-            response = self.get_unit_component_launch_response(usage_key_string, course_id)
+        response = None
 
-        return set_logged_in_cookies(request, response, edx_user), context_key
+        # Get vertical/problem redirect response.
+        if usage_key:
+            response = redirect('render_xblock', str(usage_key.course_key))
+        # Get course redirect response.
+        else:
+            response = self.get_course_launch_response(str(course_key))
+
+        return set_logged_in_cookies(request, response, edx_user)
 
     def get_course_launch_response(self, course_id: str) -> HttpResponseRedirect:
         """Get course launch response.
@@ -285,41 +382,12 @@ class ResourceLinkLaunchView(LTIToolView):
             f'/course/{course_id}'
         )
 
-    def get_unit_component_launch_response(
-        self,
-        usage_key_string: str,
-        course_id: str,
-    ) -> HttpResponseRedirect:
-        """Get unit or component launch response.
-
-        Args:
-            usage_key_string: Usage key string of a unit or component.
-            course_id: Course ID string.
-
-        Returns:
-            HttpResponseRedirect to `render_xblock` path.
-
-        Raises:
-            LtiToolLaunchException: If UsageKey `course_key` attribute is not equal to
-                the `course_id` value or `usage_key_string` has an incorrect value.
-
-        """
-        usage_key = UsageKey.from_string(usage_key_string)
-
-        if str(usage_key.course_key) != course_id:
-            raise LtiToolLaunchException(_('Unit/component does not belong to course.'))
-
-        if usage_key.block_type in ['chapter', 'sequential', 'course']:
-            raise LtiToolLaunchException(_(f'Invalid XBlock type: {usage_key.block_type}'))
-
-        return redirect('render_xblock', usage_key_string)
-
     def handle_ags(  # pylint: disable=inconsistent-return-statements
         self,
         launch_message: DjangoMessageLaunch,
         launch_data: dict,
         lti_profile: LtiProfile,
-        context_key: str,
+        resource_id: str,
     ):
         """Handle AGS (Assignment and Grade Services) claims.
 
@@ -330,7 +398,7 @@ class ResourceLinkLaunchView(LTIToolView):
             launch_message: DjangoMessageLaunch object.
             launch_data: Launch data dictionary.
             lti_profile: LtiProfile instance.
-            context_key: Course ID or unit/component key string.
+            resource_id: Resource ID string.
 
         Raises:
             LtiToolLaunchException: If `lineitem` or score scope claims are missing.
@@ -351,7 +419,7 @@ class ResourceLinkLaunchView(LTIToolView):
         try:
             LtiGradedResource.objects.get_or_create(
                 lti_profile=lti_profile,
-                context_key=context_key,
+                context_key=resource_id,
                 lineitem=lineitem,
             )
         except ValidationError as exc:
