@@ -84,8 +84,16 @@ class LtiToolLoginView(LTIToolView):
             HTTP redirect response or HTTP 400 response.
         """
         try:
-            oidc_login = DjangoOIDCLogin(request, self.tool_config, launch_data_storage=self.tool_storage)
-            return oidc_login.redirect(request.POST.get(self.LAUNCH_URI) or request.GET.get(self.LAUNCH_URI))
+            oidc_login = DjangoOIDCLogin(
+                request,
+                self.tool_config,
+                launch_data_storage=self.tool_storage,
+            )
+            oidc_login.enable_check_cookies()
+
+            return oidc_login.redirect(
+                request.POST.get(self.LAUNCH_URI) or request.GET.get(self.LAUNCH_URI)
+            )
         except (LtiException, OIDCException) as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3: OIDC login failed: {exc}'))
 
