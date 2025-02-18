@@ -16,6 +16,16 @@ Unreleased
 
 *
 
+0.2.0 - 2025-02-18
+********************
+
+Changed
+=======
+
+- ResourceLinkLaunchView obtain resource from custom parameters
+- Fix pylti1p3 iframe cookies
+- Add xframe_options_exempt decorator to LtiToolLoginView and DeepLinkingFormView
+
 0.1.8 - 2025-01-15
 ********************
 
@@ -225,7 +235,10 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.1.6...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.0
+[0.1.8]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.8
+[0.1.7]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.7
 [0.1.6]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.6
 [0.1.5]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.5
 [0.1.4]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.4
