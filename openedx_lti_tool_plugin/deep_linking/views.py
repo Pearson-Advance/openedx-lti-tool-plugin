@@ -69,7 +69,11 @@ class DeepLinkingView(LTIToolView):
             return self.http_response_error(exc)
 
 
-@method_decorator(xframe_options_exempt, name='dispatch')
+# NOTE: This view requires to be exempted from the protection of the
+# CSRF and X-Frame-Options middlewares, as it is intended to be embedded
+# in an iframe within the platform. The view is protected by the LTI
+# authentication and authorization mechanisms.
+@method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
 class DeepLinkingFormView(LTIToolView):
     """Deep Linking Form View.
 
