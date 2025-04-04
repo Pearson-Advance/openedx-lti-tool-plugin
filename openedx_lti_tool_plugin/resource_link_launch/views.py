@@ -29,7 +29,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import con
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import course_enrollment, course_enrollment_exception
 from openedx_lti_tool_plugin.edxapp_wrapper.user_authn_module import set_logged_in_cookies
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, LtiProfile, UserT
+from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration, UserT
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
 from openedx_lti_tool_plugin.resource_link_launch.exceptions import LtiToolLaunchException
 from openedx_lti_tool_plugin.utils import get_identity_claims
@@ -230,7 +230,7 @@ class ResourceLinkLaunchView(LTIToolView):
         """Check course access permission.
 
         This function will check if the given `course_id` is allowed by the
-        CourseAccessConfiguration instance of this launch `LtiTool`.
+        LtiToolConfiguration instance of this launch `LtiTool`.
 
         Args:
             course_id: Course ID string.
@@ -238,7 +238,7 @@ class ResourceLinkLaunchView(LTIToolView):
             aud: Audience claim.
 
         Raises:
-            LtiToolLaunchException: If CourseAccessConfiguration instance
+            LtiToolLaunchException: If LtiToolConfiguration instance
                 does not exist for LtiTool or the `course_id` is not allowed.
 
         .. _OpenID Connect Core 1.0 - ID Token:
@@ -248,17 +248,17 @@ class ResourceLinkLaunchView(LTIToolView):
         if not COURSE_ACCESS_CONFIGURATION.is_enabled():
             return
 
-        lti_tool_config = self.tool_config.get_lti_tool(iss, aud)
-        course_access_config = CourseAccessConfiguration.objects.filter(
-            lti_tool=lti_tool_config,
+        lti_tool = self.tool_config.get_lti_tool(iss, aud)
+        lti_tool_configuration = LtiToolConfiguration.objects.filter(
+            lti_tool=lti_tool,
         ).first()
 
-        if not course_access_config:
+        if not lti_tool_configuration:
             raise LtiToolLaunchException(
-                _(f'Course access configuration for {lti_tool_config.title} not found.'),
+                _(f'LTI tool configuration for {lti_tool.title} not found.'),
             )
 
-        if not course_access_config.is_course_id_allowed(course_id):
+        if not lti_tool_configuration.is_course_id_allowed(course_id):
             raise LtiToolLaunchException(_(f'Course ID {course_id} is not allowed.'))
 
     def authenticate_and_login(
