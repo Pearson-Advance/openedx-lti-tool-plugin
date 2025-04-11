@@ -15,7 +15,7 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.models import CourseAccessConfiguration, CourseContext, CourseContextQuerySet, LtiProfile
+from openedx_lti_tool_plugin.models import CourseContext, CourseContextQuerySet, LtiProfile, LtiToolConfiguration
 from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
 MODULE_PATH = 'openedx_lti_tool_plugin.models'
@@ -276,14 +276,15 @@ class TestLtiProfile(TestCase):
         )
 
 
-class TestCourseAccessConfiguration(TestCase):
-    """Test course access configuration. model."""
+class TestLtiToolConfiguration(TestCase):
+    """Test LTI tool configuration model."""
 
     def setUp(self):
         """Test fixtures setup."""
         super().setUp()
-        signals.post_save.disconnect(sender=LtiTool, dispatch_uid='create_access_configuration_on_lti_tool_creation')
+        signals.post_save.disconnect(sender=LtiTool, dispatch_uid='create_configuration_on_lti_tool_creation')
         self.lti_tool = LtiTool.objects.create(
+            title='random-title',
             client_id='random-client-id',
             auth_login_url='random-login-url',
             auth_token_url='random-token-url',
@@ -291,10 +292,7 @@ class TestCourseAccessConfiguration(TestCase):
             tool_key=LtiToolKey.objects.create(),
         )
         self.allowed_course_ids = ['course-v1:x+x+x', 'course-v1:x+x+y']
-        self.access_configuration = CourseAccessConfiguration.objects.create(
-            lti_tool=self.lti_tool,
-            allowed_course_ids=str(self.allowed_course_ids),
-        )
+        self.tool_configuration = LtiToolConfiguration.objects.get(lti_tool=self.lti_tool)
 
     @patch.object(CourseKey, 'from_string')
     @patch('openedx_lti_tool_plugin.models.isinstance')
@@ -314,9 +312,9 @@ class TestCourseAccessConfiguration(TestCase):
         """
         json_loads_mock.return_value = self.allowed_course_ids
 
-        self.access_configuration.clean()
+        self.tool_configuration.clean()
 
-        json_loads_mock.assert_called_once_with(self.access_configuration.allowed_course_ids)
+        json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
         isinstance_mock.assert_called_once_with(json_loads_mock.return_value, list)
         course_key_mock.assert_has_calls(map(call, self.allowed_course_ids))
 
@@ -333,13 +331,13 @@ class TestCourseAccessConfiguration(TestCase):
             json_loads_mock: Mocked json.loads function.
             gettext_mock: Mocked gettext function.
         """
-        self.access_configuration.allowed_course_ids = 'invalid-allowed-course-ids'
+        self.tool_configuration.allowed_course_ids = 'invalid-allowed-course-ids'
 
         with self.assertRaises(ValidationError) as cm:
-            self.access_configuration.clean()
+            self.tool_configuration.clean()
 
         json_loads_mock.assert_called_once_with('invalid-allowed-course-ids')
-        gettext_mock.assert_called_once_with(f'Should be a list. {self.access_configuration.EXAMPLE_ID_LIST}')
+        gettext_mock.assert_called_once_with(f'Should be a list. {self.tool_configuration.EXAMPLE_ID_LIST}')
         self.assertEqual(str(cm.exception), "{'allowed_course_ids': ['']}")
 
     @patch('openedx_lti_tool_plugin.models._', return_value='')
@@ -358,14 +356,14 @@ class TestCourseAccessConfiguration(TestCase):
             isinstance_mock: Mocked isinstance function.
             gettext_mock: Mocked gettext function.
         """
-        self.access_configuration.allowed_course_ids = '{"test": "test"}'
+        self.tool_configuration.allowed_course_ids = '{"test": "test"}'
 
         with self.assertRaises(ValidationError) as cm:
-            self.access_configuration.clean()
+            self.tool_configuration.clean()
 
         json_loads_mock.assert_called_once_with('{"test": "test"}')
         isinstance_mock.assert_called_once_with(json_loads_mock(), list)
-        gettext_mock.assert_called_once_with(f'Should be a list. {self.access_configuration.EXAMPLE_ID_LIST}')
+        gettext_mock.assert_called_once_with(f'Should be a list. {self.tool_configuration.EXAMPLE_ID_LIST}')
         self.assertEqual(str(cm.exception), "{'allowed_course_ids': ['']}")
 
     @patch.object(CourseKey, 'from_string', side_effect=InvalidKeyError(None, None))
@@ -386,10 +384,10 @@ class TestCourseAccessConfiguration(TestCase):
         """
         invalid_allowed_course_ids = ['invalid-course-id']
         json_loads_mock.return_value = invalid_allowed_course_ids
-        self.access_configuration.allowed_course_ids = str(invalid_allowed_course_ids)
+        self.tool_configuration.allowed_course_ids = str(invalid_allowed_course_ids)
 
         with self.assertRaises(ValidationError) as cm:
-            self.access_configuration.clean()
+            self.tool_configuration.clean()
 
         json_loads_mock.assert_called_once_with(str(invalid_allowed_course_ids))
         course_key_mock.assert_called_once_with(invalid_allowed_course_ids[0])
@@ -405,8 +403,8 @@ class TestCourseAccessConfiguration(TestCase):
         """
         json_loads_mock.return_value = self.allowed_course_ids
 
-        self.assertTrue(self.access_configuration.is_course_id_allowed('course-v1:x+x+x'))
-        json_loads_mock.assert_called_once_with(self.access_configuration.allowed_course_ids)
+        self.assertTrue(self.tool_configuration.is_course_id_allowed('course-v1:x+x+x'))
+        json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
 
     @patch('openedx_lti_tool_plugin.models.json.loads')
     def test_is_course_id_allowed_with_unknown_course_id(self, json_loads_mock: MagicMock):
@@ -417,38 +415,57 @@ class TestCourseAccessConfiguration(TestCase):
         """
         json_loads_mock.return_value = self.allowed_course_ids
 
-        self.assertFalse(self.access_configuration.is_course_id_allowed('id-3'))
-        json_loads_mock.assert_called_once_with(self.access_configuration.allowed_course_ids)
+        self.assertFalse(self.tool_configuration.is_course_id_allowed('id-3'))
+        json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
 
     def test_str_method(self):
         """Test __str__ method return value."""
         self.assertEqual(
-            str(self.access_configuration),
-            f'<CourseAccessConfiguration, ID: {self.access_configuration.id}>',
+            str(self.tool_configuration),
+            f'<LtiToolConfiguration, ID: {self.tool_configuration.id}>',
         )
+
+    def test_user_provisioning_mode_choices(self):
+        """Test user_provisioning_mode choices."""
+        self.assertEqual(
+            self.tool_configuration.user_provisioning_mode,
+            LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY
+        )
+
+        self.tool_configuration.user_provisioning_mode = LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
+        self.tool_configuration.save()
+        self.assertEqual(
+            self.tool_configuration.user_provisioning_mode,
+            LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
+        )
+
+        choices = [choice[0] for choice in LtiToolConfiguration.UserProvisioningMode.choices]
+        self.assertIn(LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY.value, choices)
+        self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW.value, choices)
+        self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_ONLY.value, choices)
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
 @patch.object(CourseContextQuerySet, 'all')
 @patch(f'{MODULE_PATH}.DjangoDbToolConf')
-@patch.object(CourseAccessConfiguration.objects, 'get')
+@patch.object(LtiToolConfiguration.objects, 'get')
 @patch.object(CourseContextQuerySet, 'none')
 @patch(f'{MODULE_PATH}.json.loads')
 @patch.object(CourseContextQuerySet, 'filter')
 class TestCourseContextQuerySetAllForLtiTool(TestCase):
     """Test CourseContextQuerySet.all_for_lti_tool method."""
 
-    def test_with_course_access_configuration(
+    def test_with_lti_tool_configuration(
         self,
         course_context_manager_filter_mock: MagicMock,
         json_loads_mock: MagicMock,
         course_context_manager_none_mock: MagicMock,
-        course_access_configuration_get_mock: MagicMock,
+        lti_tool_configuration_get_mock: MagicMock,
         django_db_tool_conf_mock: MagicMock,
         course_context_manager_all_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
     ):
-        """Test with CourseAccessConfiguration (happy path)."""
+        """Test with LtiToolConfiguration (happy path)."""
         self.assertEqual(
             CourseContext.objects.all_for_lti_tool(ISS, AUD),
             course_context_manager_filter_mock.return_value,
@@ -457,29 +474,29 @@ class TestCourseContextQuerySetAllForLtiTool(TestCase):
         course_context_manager_all_mock.assert_not_called()
         django_db_tool_conf_mock.assert_called_once_with()
         django_db_tool_conf_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
-        course_access_configuration_get_mock.assert_called_once_with(
+        lti_tool_configuration_get_mock.assert_called_once_with(
             lti_tool=django_db_tool_conf_mock().get_lti_tool(),
         )
         course_context_manager_none_mock.assert_not_called()
         json_loads_mock.assert_called_once_with(
-            course_access_configuration_get_mock().allowed_course_ids,
+            lti_tool_configuration_get_mock().allowed_course_ids,
         )
         course_context_manager_filter_mock.assert_called_once_with(
             learning_context__context_key__in=json_loads_mock(),
         )
 
-    def test_without_course_access_configuration(
+    def test_without_lti_tool_configuration(
         self,
         course_context_manager_filter_mock: MagicMock,
         json_loads_mock: MagicMock,
         course_context_manager_none_mock: MagicMock,
-        course_access_configuration_get_mock: MagicMock,
+        lti_tool_configuration_get_mock: MagicMock,
         django_db_tool_conf_mock: MagicMock,
         course_context_manager_all_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
     ):
-        """Test without CourseAccessConfiguration."""
-        course_access_configuration_get_mock.side_effect = CourseAccessConfiguration.DoesNotExist
+        """Test without LtiToolConfiguration."""
+        lti_tool_configuration_get_mock.side_effect = LtiToolConfiguration.DoesNotExist
 
         self.assertEqual(
             CourseContext.objects.all_for_lti_tool(ISS, AUD),
@@ -489,7 +506,7 @@ class TestCourseContextQuerySetAllForLtiTool(TestCase):
         course_context_manager_all_mock.assert_not_called()
         django_db_tool_conf_mock.assert_called_once_with()
         django_db_tool_conf_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
-        course_access_configuration_get_mock.assert_called_once_with(
+        lti_tool_configuration_get_mock.assert_called_once_with(
             lti_tool=django_db_tool_conf_mock().get_lti_tool(),
         )
         course_context_manager_none_mock.assert_called_once_with()
@@ -501,7 +518,7 @@ class TestCourseContextQuerySetAllForLtiTool(TestCase):
         course_context_manager_filter_mock: MagicMock,
         json_loads_mock: MagicMock,
         course_context_manager_none_mock: MagicMock,
-        course_access_configuration_get_mock: MagicMock,
+        lti_tool_configuration_get_mock: MagicMock,
         django_db_tool_conf_mock: MagicMock,
         course_context_manager_all_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
@@ -517,7 +534,7 @@ class TestCourseContextQuerySetAllForLtiTool(TestCase):
         course_context_manager_all_mock.assert_called_once_with()
         django_db_tool_conf_mock.assert_not_called()
         django_db_tool_conf_mock().get_lti_tool.assert_not_called()
-        course_access_configuration_get_mock.assert_not_called()
+        lti_tool_configuration_get_mock.assert_not_called()
         course_context_manager_none_mock.assert_not_called()
         json_loads_mock.assert_not_called()
         course_context_manager_filter_mock.assert_not_called()

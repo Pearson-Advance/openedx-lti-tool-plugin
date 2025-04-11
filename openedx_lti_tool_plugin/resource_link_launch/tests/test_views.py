@@ -388,20 +388,20 @@ class TestResourceLinkLaunchViewValidateOpaqueKeys(ResourceLinkLaunchViewBaseTes
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
 @patch.object(ResourceLinkLaunchView, 'tool_config', new_callable=PropertyMock)
-@patch(f'{MODULE_PATH}.CourseAccessConfiguration')
+@patch(f'{MODULE_PATH}.LtiToolConfiguration')
 class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchViewBaseTestCase):
     """Test ResourceLinkLaunchView.check_course_access_permission method."""
 
     def test_with_allowed_course_id(
         self,
-        course_access_configuration_mock: MagicMock,
+        lti_tool_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
     ):
         """Test with allowed course ID."""
         course_access_configuration_switch_mock.is_enabled.return_value = True
         course_access_conf_queryset_mock = (
-            course_access_configuration_mock.objects
+            lti_tool_configuration_mock.objects
             .filter.return_value
             .first.return_value
         )
@@ -411,22 +411,22 @@ class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchVi
 
         course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
         tool_config_mock().get_lti_tool.assert_called_once_with(ISS, AUD)
-        course_access_configuration_mock.objects.filter.assert_called_once_with(
+        lti_tool_configuration_mock.objects.filter.assert_called_once_with(
             lti_tool=tool_config_mock().get_lti_tool(),
         )
-        course_access_configuration_mock.objects.filter.return_value.first.assert_called_once_with()
+        lti_tool_configuration_mock.objects.filter.return_value.first.assert_called_once_with()
         course_access_conf_queryset_mock.is_course_id_allowed.assert_called_once_with(COURSE_ID)
 
     def test_with_disabled_course_access_configuration_switch(
         self,
-        course_access_configuration_mock: MagicMock,
+        lti_tool_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
     ):
         """Test with disabled `COURSE_ACCESS_CONFIGURATION` switch."""
         course_access_configuration_switch_mock.is_enabled.return_value = False
         course_access_conf_queryset_mock = (
-            course_access_configuration_mock.objects
+            lti_tool_configuration_mock.objects
             .filter.return_value
             .first.return_value
         )
@@ -435,41 +435,41 @@ class TestResourceLinkLaunchViewCheckCourseAccessPermission(ResourceLinkLaunchVi
 
         course_access_configuration_switch_mock.is_enabled.assert_called_once_with()
         tool_config_mock.get_lti_tool.assert_not_called()
-        course_access_configuration_mock.objects.filter.assert_not_called()
-        course_access_configuration_mock.objects.filter.return_value.first.assert_not_called()
+        lti_tool_configuration_mock.objects.filter.assert_not_called()
+        lti_tool_configuration_mock.objects.filter.return_value.first.assert_not_called()
         course_access_conf_queryset_mock.is_course_id_allowed.assert_not_called()
 
     @patch(f'{MODULE_PATH}._')
     def test_without_course_access_configuration(
         self,
         gettext_mock: MagicMock,
-        course_access_configuration_mock: MagicMock,
+        lti_tool_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,
         course_access_configuration_switch_mock: MagicMock,
     ):
         """Test without CourseAccessConfiguration instance."""
         course_access_configuration_switch_mock.is_enabled.return_value = True
-        course_access_configuration_mock.objects.filter.return_value.first.return_value = None
+        lti_tool_configuration_mock.objects.filter.return_value.first.return_value = None
 
         with self.assertRaises(LtiToolLaunchException):
             self.view_class().check_course_access_permission(COURSE_ID, ISS, AUD)
 
         gettext_mock.assert_called_once_with(
-            f'Course access configuration for {tool_config_mock().get_lti_tool().title} not found.',
+            f'LTI tool configuration for {tool_config_mock().get_lti_tool().title} not found.',
         )
 
     @patch(f'{MODULE_PATH}._')
     def test_with_disallowed_course_id(
         self,
         gettext_mock: MagicMock,
-        course_access_configuration_mock: MagicMock,
+        lti_tool_configuration_mock: MagicMock,
         tool_config_mock: MagicMock,  # pylint: disable=unused-argument
         course_access_configuration_switch_mock: MagicMock,
     ):
         """Test with disallowed course ID."""
         course_access_configuration_switch_mock.is_enabled.return_value = True
         course_access_conf_queryset_mock = (
-            course_access_configuration_mock.objects
+            lti_tool_configuration_mock.objects
             .filter.return_value
             .first.return_value
         )

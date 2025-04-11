@@ -9,7 +9,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import Q, TextChoices
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
@@ -208,18 +209,26 @@ class LtiProfile(models.Model):
         return f'<LtiProfile, ID: {self.id}>'
 
 
-class CourseAccessConfiguration(models.Model):
-    """Course access configuration.
+class LtiToolConfiguration(models.Model):
+    """LTI Tool Configuration.
 
-    A model to store LTI tool course access configuration.
+    A model to store LTI tool configuration.
+
     """
 
     EXAMPLE_ID_LIST = 'Example: ["id-1", "id-2", ...]'
 
+    class UserProvisioningMode(TextChoices):
+        """Enumeration for user provisioning modes."""
+
+        NEW_ACCOUNTS_ONLY = 'new_only', _('New accounts only (automatic)')
+        EXISTING_AND_NEW = 'existing_and_new', _('Existing and new accounts (prompt)')
+        EXISTING_ONLY = 'existing_only', _('Existing accounts only (prompt)')
+
     lti_tool = models.OneToOneField(
         LtiTool,
         on_delete=models.CASCADE,
-        related_name='openedx_lti_tool_plugin_course_permission',
+        related_name=f'{app_config.name}_lti_tool_configuration',
         verbose_name=_('LTI Tool'),
     )
     allowed_course_ids = models.TextField(
@@ -227,12 +236,32 @@ class CourseAccessConfiguration(models.Model):
         help_text=_(f'List of allowed courses IDs. {EXAMPLE_ID_LIST}'),
         default=[],
     )
+    user_provisioning_mode = models.CharField(
+        max_length=50,
+        choices=UserProvisioningMode.choices,
+        default=UserProvisioningMode.NEW_ACCOUNTS_ONLY,
+        verbose_name=_('User Provisioning Mode'),
+        help_text=mark_safe(_("""
+        <p>Determines how user accounts are provisioned during an LTI launch:</p>
+        <ul>
+          <li><strong>New accounts only (automatic)</strong> -
+            New accounts are created automatically on first launch
+            and reused for subsequent launches.</li>
+          <li><strong>Existing and new accounts (prompt)</strong> -
+            User prompted to link an existing account or create a new one.
+            That selection is used for subsequent launches.</li>
+          <li><strong>Existing accounts only (prompt)</strong> -
+            Only existing accounts may be used. Without an existing account,
+            users cannot access shared resources.</li>
+        </ul>
+        """)),
+    )
 
     class Meta:
         """Meta options."""
 
-        verbose_name = 'Course access configuration'
-        verbose_name_plural = 'Course access configurations'
+        verbose_name = 'LTI tool configuration'
+        verbose_name_plural = 'LTI tool configurations'
 
     def clean(self):
         """Model clean method.
@@ -278,7 +307,7 @@ class CourseAccessConfiguration(models.Model):
 
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
-        return f'<CourseAccessConfiguration, ID: {self.id}>'
+        return f'<LtiToolConfiguration, ID: {self.id}>'
 
 
 class CourseContextQuerySet(models.QuerySet):
@@ -295,11 +324,11 @@ class CourseContextQuerySet(models.QuerySet):
             All CourseContext objects if COURSE_ACCESS_CONFIGURATION
             switch is disabled.
 
-            All CourseContext objects with a Course ID that is in the
-            CourseAccessConfiguration.allowed_course_ids field.
+            All objects with a Course ID that is in the
+            LtiToolConfiguration.allowed_course_ids field.
 
             None if COURSE_ACCESS_CONFIGURATION switch is enabled and
-            no CourseAccessConfiguration can be found for the queried
+            no LtiToolConfiguration can be found for the queried
             LtiTool.
 
         """
@@ -307,15 +336,15 @@ class CourseContextQuerySet(models.QuerySet):
             return self.all()
 
         try:
-            course_access_config = CourseAccessConfiguration.objects.get(
+            lti_tool_config = LtiToolConfiguration.objects.get(
                 lti_tool=DjangoDbToolConf().get_lti_tool(iss, aud),
             )
-        except CourseAccessConfiguration.DoesNotExist:
+        except LtiToolConfiguration.DoesNotExist:
             return self.none()
 
         return self.filter(
             learning_context__context_key__in=json.loads(
-                course_access_config.allowed_course_ids,
+                lti_tool_config.allowed_course_ids,
             ),
         )
 
