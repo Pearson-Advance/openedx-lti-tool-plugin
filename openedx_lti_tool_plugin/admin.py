@@ -1,4 +1,4 @@
-"""Admin configuration for openedx_lti_tool_plugin."""
+"""Django Admin."""
 from django.contrib import admin
 
 from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration
@@ -6,10 +6,55 @@ from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration
 
 @admin.register(LtiProfile)
 class LtiProfileAdmin(admin.ModelAdmin):
-    """Admin configuration for LtiProfile model."""
+    """LtiProfile admin configuration."""
 
-    list_display = ('id', 'uuid', 'platform_id', 'client_id', 'subject_id')
-    search_fields = ['id', 'uuid', 'platform_id', 'client_id', 'subject_id']
+    readonly_fields = [
+        'uuid',
+        'user',
+    ]
+    list_display = (
+        'id',
+        'uuid',
+        'platform_id',
+        'client_id',
+        'subject_id',
+        'user_id',
+        'user_email',
+    )
+    search_fields = [
+        'id',
+        'uuid',
+        'platform_id',
+        'client_id',
+        'subject_id',
+        'user__email',
+    ]
+
+    @admin.display(description='User ID')
+    def user_id(self, instance: LtiProfile) -> str:
+        """User ID list_display method.
+
+        Args:
+            instance: LtiProfile instance.
+
+        Returns:
+            User ID.
+
+        """
+        return instance.user.id
+
+    @admin.display(description='User email')
+    def user_email(self, instance: LtiProfile) -> str:
+        """User email list_display method.
+
+        Args:
+            instance: LtiProfile instance.
+
+        Returns:
+            User email.
+
+        """
+        return instance.user.email
 
 
 @admin.register(LtiToolConfiguration)
