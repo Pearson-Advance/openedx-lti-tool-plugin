@@ -16,6 +16,21 @@ Unreleased
 
 *
 
+0.2.2 - 2025-03-11
+********************
+
+Added
+=====
+
+* Added `user_provisioning_mode` field to control how user accounts are created during LTI launches
+
+Changed
+=======
+
+* Renamed `CourseAccessConfiguration` class to `LtiToolConfiguration`
+* Updated all references to the renamed class throughout the plugin
+* Updated unit tests
+
 0.2.1 - 2025-03-07
 ********************
 
