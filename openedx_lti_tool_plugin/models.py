@@ -1,4 +1,4 @@
-"""Django Model."""
+"""Django Models."""
 import json
 import re
 import uuid
@@ -7,7 +7,8 @@ from typing import TypeVar
 import shortuuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import EmailValidator
 from django.db import models, transaction
 from django.db.models import Q, TextChoices
 from django.utils.safestring import mark_safe
@@ -24,18 +25,25 @@ from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
 from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
+User = get_user_model()
+UserProfile = user_profile()
 
 
 class LtiProfile(models.Model):
-    """LTI 1.3 profile.
+    """LTI 1.3 Profile.
 
-    A unique representation of the LTI subject that initiated an LTI launch.
+    This model represents the profile created to uniquely identify an LTI 1.3 launch subject.
 
     """
 
-    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    user = models.OneToOneField(
-        get_user_model(),
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        verbose_name=_('UUID'),
+        editable=False,
+    )
+    user = models.ForeignKey(
+        User,
         on_delete=models.CASCADE,
         related_name=f'{app_config.name}_lti_profile',
         verbose_name=_('Open edX user'),
@@ -59,7 +67,7 @@ class LtiProfile(models.Model):
     pii = models.JSONField(
         default=dict,
         verbose_name=_('PII'),
-        help_text=_('Profile PII.'),
+        help_text=_('Personally Identifiable Information.'),
     )
 
     _initial_pii = None
@@ -86,7 +94,8 @@ class LtiProfile(models.Model):
 
         """
         super().__init__(*args, **kwargs)
-        # Store instance initial field data.
+
+        # Store initial pii field data.
         self._initial_pii = self.pii
 
     @property
@@ -112,7 +121,7 @@ class LtiProfile(models.Model):
     @property
     def name(self) -> str:
         """str: Name."""
-        # Return name from `pii` field.
+        # Return name from pii field.
         if name := self.pii.get('name', ''):
             return name
 
@@ -123,64 +132,159 @@ class LtiProfile(models.Model):
         return ' '.join(part for part in name_parts if part)
 
     @property
+    def email(self) -> str:
+        """str: Email.
+
+        Returns:
+            Email built with uuid field and app_config.domain_name.
+
+        """
+        return f'{self.uuid}@{app_config.domain_name}'
+
+    @property
+    def pii_email(self) -> str:
+        """str: PII email.
+
+        Returns:
+            Email from pii field if valid.
+
+        """
+        try:
+            email = self.pii.get('email', '')
+            EmailValidator()(email)
+
+            return email
+        except ValidationError:
+            return ''
+
+    @property
     def username(self) -> str:
         """str: Username."""
-        # Return username from `user` attribute.
+        # Return from user field.
         if getattr(self, 'user', None):
             return self.user.username
 
         try:
-            # Return username using `name` and short UUID.
+            # Return using name and short_uuid.
             name = self.name.split()
             name = name[0][:8].lower()
             name = re.sub(r'[\W_]+', '', name)
 
             return f'{name}.{self.short_uuid}'
         except IndexError:
-            # Return username using short UUID.
+            # Return using short_uuid.
             return f'{self.short_uuid}'
 
     @property
-    def email(self) -> str:
-        """str: Email address."""
-        # Return email from `user` attribute.
-        if getattr(self, 'user', None):
-            return self.user.email
-
-        # Build email using UUID and app domain_name.
-        return f'{self.uuid}@{app_config.domain_name}'
-
-    def user_collision(self) -> bool:
-        """Check for user collision.
+    def user_profile_field_values(self) -> dict:
+        """str: UserProfile field values.
 
         Returns:
-            True if a user collides with another user.
-            False if no user collision is found.
+            Dictionary with UserProfile field values.
 
         """
-        return get_user_model().objects.filter(
-            Q(email=self.email)
-            | Q(username=self.username)
+        return {
+            # Truncate name to field max_length limit.
+            'name': self.name[:255],
+        }
+
+    def can_create_user_with_pii_email(self) -> bool:
+        """Check if User can be created with pii_email.
+
+        Returns:
+            True if User can be created with pii_email.
+            False if User cannot be created with pii_email.
+
+        """
+        return (
+            self.pii_email
+            and not User.objects.filter(
+                email=self.pii_email,
+            ).exists()
+        )
+
+    @staticmethod
+    def check_user_collides(email: str, username: str) -> bool:
+        """Check if User collides.
+
+        Args:
+            email: User email.
+            username: User username.
+
+        Returns:
+            True if User collides.
+            False if User does not collide.
+
+        """
+        return User.objects.filter(
+            Q(email=email) | Q(username=username)
         ).exclude(
-            email=self.email,
-            username=self.username,
+            email=email,
+            username=username,
         ).exists()
 
-    def configure_user(self):
-        """Configure user."""
-        # Configure if no user is set.
-        if getattr(self, 'user', None):
-            return
-        # Regenerate uuid on user collision.
-        while self.user_collision():
+    def prevent_user_collision(self, email: str, username: str):
+        """Prevent User collision.
+
+        Regenerate uuid field if User collides.
+        This is done to avoid a collision with an existing User
+        when creating an User using an auto-generated username or email.
+
+        Args:
+            email: User email.
+            username: User username.
+
+        """
+        while self.check_user_collides(email, username):
             self.uuid = uuid.uuid4()
-        # Get or create user.
-        self.user, _created = get_user_model().objects.get_or_create(
+
+    def create_user(self) -> UserT:
+        """Create User."""
+        # Create User with pii_email.
+        if self.can_create_user_with_pii_email():
+            self.prevent_user_collision(self.pii_email, self.username)
+
+            return User.objects.create(
+                email=self.pii_email,
+                username=self.username,
+            )
+
+        # Create User with email and username.
+        self.prevent_user_collision(self.email, self.username)
+
+        return User.objects.create(
             email=self.email,
             username=self.username,
         )
-        # Set unusable user password.
-        self.user.set_unusable_password()
+
+    def configure_user(self):
+        """Configure User."""
+        # Create User if user field is not set.
+        if not getattr(self, 'user', None):
+            self.user: UserT = self.create_user()
+            self.user.set_unusable_password()
+
+    def configure_user_profile(self):
+        """Configure UserProfile."""
+        try:
+            # Update UserProfile.
+            profile = UserProfile.objects.get(user=self.user)
+            field_values = {}
+
+            # Only update UserProfile if email not autogenerated.
+            if f'@{app_config.domain_name}' in self.user.email:
+                field_values = self.user_profile_field_values
+
+            for field, value in field_values.items():
+                setattr(profile, field, value)
+
+            profile.save()
+        except ObjectDoesNotExist:
+            # Create UserProfile.
+            UserProfile.objects.create(
+                user=self.user,
+                **self.user_profile_field_values,
+            )
 
     @transaction.atomic
     def save(self, *args: tuple, **kwargs: dict):
@@ -191,16 +295,14 @@ class LtiProfile(models.Model):
             **kwargs: Arbitrary keyword arguments.
 
         """
-        # Merge initial instance PII data with new PII data.
+        # Merge initial pii field data with new pii data.
         self.pii = {**self._initial_pii, **self.pii}
-        # Configure user.
+
+        # Configure User.
         self.configure_user()
-        # Update or create user profile.
-        user_profile().objects.update_or_create(
-            user=self.user,
-            # Truncate name to max_length limit.
-            defaults={'name': self.name[:255]},
-        )
+
+        # Configure UserProfile.
+        self.configure_user_profile()
 
         return super().save(*args, **kwargs)
 

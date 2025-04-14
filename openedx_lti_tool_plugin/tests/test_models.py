@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, PropertyMock, call, patch
 
 import ddt
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db.models import signals
 from django.test import TestCase
 from opaque_keys import InvalidKeyError
@@ -25,6 +25,8 @@ MIDDLE_NAME = 'random-middle-name'
 FAMILY_NAME = 'random-family-name'
 GIVEN_NAME_LARGER = ''.join(random.choices([string.ascii_lowercase, string.punctuation], k=300))
 UNICODE_USERNAME_GIVEN_NAME = re.sub(r'[\W_]+', '', f'{GIVEN_NAME_LARGER[:8]}').lower()
+EMAIL = 'test@example.com'
+USERNAME = 'test-username'
 
 
 @ddt.ddt
@@ -42,126 +44,255 @@ class TestLtiProfile(TestCase):
             subject_id=SUB,
             pii=self.pii
         )
+        self.user = get_user_model().objects.create(
+            email=EMAIL,
+            username=USERNAME,
+        )
 
     # pylint: disable=protected-access
     def test_class_instance_attributes(self):
         """Test class instance attributes."""
         self.assertEqual(self.lti_profile._initial_pii, self.pii)
 
+    @patch.object(LtiProfile, 'pii_email', new_callable=PropertyMock)
+    @patch.object(get_user_model().objects, 'filter')
+    def test_can_create_user_with_pii_email_without_user(
+        self,
+        filter_mock: MagicMock,
+        pii_email_mock: MagicMock,
+    ):
+        """Test can_create_user_with_pii_email method without existing user."""
+        filter_mock.return_value.exists.return_value = False
+
+        self.assertTrue(self.lti_profile.can_create_user_with_pii_email())
+        filter_mock.assert_called_once_with(email=pii_email_mock())
+        filter_mock().exists.assert_called_once_with()
+
+    @patch.object(get_user_model().objects, 'filter')
+    def test_can_create_user_with_pii_email_without_pii_email(
+        self,
+        filter_mock: MagicMock,
+    ):
+        """Test can_create_user_with_pii_email method without PII email."""
+        self.assertFalse(self.lti_profile.can_create_user_with_pii_email())
+        filter_mock.assert_not_called()
+        filter_mock().exists.assert_not_called()
+
+    @patch.object(LtiProfile, 'pii_email', new_callable=PropertyMock)
+    @patch.object(get_user_model().objects, 'filter')
+    def test_can_create_user_with_pii_email_with_user(
+        self,
+        filter_mock: MagicMock,
+        pii_email_mock: MagicMock,
+    ):
+        """Test can_create_user_with_pii_email method with existing user."""
+        filter_mock.return_value.exists.return_value = True
+
+        self.assertFalse(self.lti_profile.can_create_user_with_pii_email())
+        filter_mock.assert_called_once_with(email=pii_email_mock())
+        filter_mock().exists.assert_called_once_with()
+
     @patch.object(get_user_model().objects, 'filter')
     @patch(f'{MODULE_PATH}.Q')
-    def test_user_collision(
+    def test_check_user_collides(
         self,
         q_mock: MagicMock,
         user_filter_mock: MagicMock,
     ):
-        """Test user_collision method."""
-        result = self.lti_profile.user_collision()
+        """Test check_user_collides method."""
+        result = self.lti_profile.check_user_collides(EMAIL, USERNAME)
 
         q_mock.assert_has_calls([
-            call(email=self.lti_profile.email),
-            call(username=self.lti_profile.username),
+            call(email=EMAIL),
+            call(username=USERNAME),
         ])
         user_filter_mock.assert_called_once_with(q_mock() | q_mock())
         user_filter_mock().exclude.assert_called_once_with(
-            email=self.lti_profile.email,
-            username=self.lti_profile.username,
+            email=EMAIL,
+            username=USERNAME,
         )
         user_filter_mock().exclude().exists.assert_called_once_with()
         self.assertEqual(result, user_filter_mock().exclude().exists())
 
-    @patch.object(get_user_model(), 'set_unusable_password')
-    @patch.object(get_user_model().objects, 'get_or_create')
     @patch(f'{MODULE_PATH}.uuid.uuid4', return_value=uuid.uuid4())
-    @patch.object(LtiProfile, 'user_collision')
-    @patch(f'{MODULE_PATH}.getattr', return_value=None)
-    def test_configure_user_without_user_with_user_collision(
+    @patch.object(LtiProfile, 'check_user_collides')
+    def test_prevent_user_collision_with_user_collision(
         self,
-        getattr_mock: MagicMock,
-        user_collision_mock: MagicMock,
+        check_user_collides_mock: MagicMock,
         uuid4_mock: MagicMock,
-        user_get_or_create_mock: MagicMock,
-        user_set_unusable_password_mock: MagicMock,
     ):
-        """Test configure_user method without user with user collision."""
-        user_collision_mock.side_effect = [True, False]
-        user_get_or_create_mock.return_value = self.lti_profile.user, None
+        """Test prevent_user_collision method with user collision."""
+        check_user_collides_mock.side_effect = [True, False]
 
-        self.lti_profile.configure_user()
+        self.lti_profile.prevent_user_collision(EMAIL, USERNAME)
 
-        getattr_mock.assert_has_calls([
-            call(self.lti_profile, 'user', None),
-            call(self.lti_profile, 'user', None),
-            call(self.lti_profile, 'user', None),
+        check_user_collides_mock.assert_has_calls([
+            call(EMAIL, USERNAME),
+            call(EMAIL, USERNAME),
         ])
-        user_collision_mock.assert_has_calls([call(), call()])
         uuid4_mock.assert_called_once_with()
-        user_get_or_create_mock.assert_called_once_with(
-            email=self.lti_profile.email,
-            username=self.lti_profile.username,
-        )
-        user_set_unusable_password_mock.assert_called_once_with()
 
-    @patch.object(get_user_model(), 'set_unusable_password')
-    @patch.object(get_user_model().objects, 'get_or_create')
     @patch(f'{MODULE_PATH}.uuid.uuid4')
-    @patch.object(LtiProfile, 'user_collision', return_value=False)
-    @patch(f'{MODULE_PATH}.getattr', return_value=None)
-    def test_configure_user_without_user_witout_user_collision(
+    @patch.object(LtiProfile, 'check_user_collides', return_value=False)
+    def test_prevent_user_collision_without_user_collision(
         self,
-        getattr_mock: MagicMock,
-        user_collision_mock: MagicMock,
+        check_user_collides_mock: MagicMock,
         uuid4_mock: MagicMock,
-        user_get_or_create_mock: MagicMock,
-        user_set_unusable_password_mock: MagicMock,
     ):
-        """Test configure_user method without user without user collision."""
-        user_get_or_create_mock.return_value = self.lti_profile.user, None
+        """Test prevent_user_collision method without user collision."""
+        self.lti_profile.prevent_user_collision(EMAIL, USERNAME)
 
-        self.lti_profile.configure_user()
-
-        getattr_mock.assert_has_calls([
-            call(self.lti_profile, 'user', None),
-            call(self.lti_profile, 'user', None),
-            call(self.lti_profile, 'user', None),
-        ])
-        user_collision_mock.assert_called_once_with()
+        check_user_collides_mock.assert_called_once_with(EMAIL, USERNAME)
         uuid4_mock.assert_not_called()
-        user_get_or_create_mock.assert_called_once_with(
+
+    @patch.object(get_user_model().objects, 'create')
+    @patch.object(LtiProfile, 'prevent_user_collision')
+    @patch.object(LtiProfile, 'can_create_user_with_pii_email', return_value=True)
+    def test_create_user_with_pii_email(
+        self,
+        can_create_user_with_pii_email_mock: MagicMock,
+        prevent_user_collision_mock: MagicMock,
+        create_mock: MagicMock,
+    ):
+        """Test create_user_with_pii_email method with PII email."""
+        self.assertEqual(
+            self.lti_profile.create_user(),
+            create_mock.return_value,
+        )
+        can_create_user_with_pii_email_mock.assert_called_once_with()
+        prevent_user_collision_mock.assert_called_once_with(
+            self.lti_profile.pii_email,
+            self.lti_profile.username,
+        )
+        create_mock.assert_called_once_with(
+            email=self.lti_profile.pii_email,
+            username=self.lti_profile.username,
+        )
+
+    @patch.object(get_user_model().objects, 'create')
+    @patch.object(LtiProfile, 'prevent_user_collision')
+    @patch.object(LtiProfile, 'can_create_user_with_pii_email', return_value=False)
+    def test_create_user_without_pii_email(
+        self,
+        can_create_user_with_pii_email_mock: MagicMock,
+        prevent_user_collision_mock: MagicMock,
+        create_mock: MagicMock,
+    ):
+        """Test create_user_with_pii_email method without PII email."""
+        self.assertEqual(
+            self.lti_profile.create_user(),
+            create_mock.return_value,
+        )
+        can_create_user_with_pii_email_mock.assert_called_once_with()
+        prevent_user_collision_mock.assert_called_once_with(
+            self.lti_profile.email,
+            self.lti_profile.username,
+        )
+        create_mock.assert_called_once_with(
             email=self.lti_profile.email,
             username=self.lti_profile.username,
         )
-        user_set_unusable_password_mock.assert_called_once_with()
 
     @patch.object(get_user_model(), 'set_unusable_password')
-    @patch.object(get_user_model().objects, 'get_or_create')
-    @patch.object(get_user_model().objects, 'filter')
-    @patch(f'{MODULE_PATH}.getattr')
-    def test_configure_user_with_user(
+    @patch.object(LtiProfile, 'create_user')
+    @patch(f'{MODULE_PATH}.getattr', return_value=False)
+    def test_configure_user_without_user(
         self,
         getattr_mock: MagicMock,
-        user_filter_mock: MagicMock,
-        user_get_or_create_mock: MagicMock,
-        user_set_unusable_password_mock: MagicMock,
+        create_user_mock: MagicMock,
+        set_unusable_password_mock: MagicMock,
     ):
-        """Test configure_user method with user."""
-        user_get_or_create_mock.return_value = self.lti_profile.user, None
+        """Test configure_user method without user."""
+        create_user_mock.return_value = self.lti_profile.user
 
         self.lti_profile.configure_user()
 
         getattr_mock.assert_called_once_with(self.lti_profile, 'user', None)
-        user_filter_mock.assert_not_called()
-        user_filter_mock().exclude.assert_not_called()
-        user_get_or_create_mock.assert_not_called()
-        user_set_unusable_password_mock.assert_not_called()
+        create_user_mock.assert_called_once_with()
+        self.assertEqual(self.lti_profile.user, create_user_mock())
+        set_unusable_password_mock.assert_called_once_with()
+
+    @patch.object(get_user_model(), 'set_unusable_password')
+    @patch.object(LtiProfile, 'create_user')
+    @patch(f'{MODULE_PATH}.getattr')
+    def test_configure_user_with_user(
+        self,
+        getattr_mock: MagicMock,
+        create_user_mock: MagicMock,
+        set_unusable_password_mock: MagicMock,
+    ):
+        """Test configure_user method with user."""
+        self.lti_profile.configure_user()
+
+        getattr_mock.assert_called_once_with(self.lti_profile, 'user', None)
+        create_user_mock.assert_not_called()
+        set_unusable_password_mock.assert_not_called()
+
+    @patch(f'{MODULE_PATH}.setattr')
+    @patch(f'{MODULE_PATH}.UserProfile')
+    def test_configure_user_profile_with_auto_generated_email(
+        self,
+        user_profile_mock: MagicMock,
+        setattr_mock: MagicMock,
+    ):
+        """Test configure_user_profile method with auto-generated email."""
+        self.lti_profile.configure_user_profile()
+
+        user_profile_mock.objects.get.assert_called_once_with(user=self.lti_profile.user)
+        setattr_mock.assert_has_calls([
+            call(user_profile_mock.objects.get(), 'name', self.lti_profile.name),
+        ])
+        user_profile_mock.objects.get().save.assert_called_once_with()
+        user_profile_mock.objects.create.assert_not_called()
+
+    @patch(f'{MODULE_PATH}.setattr')
+    @patch(f'{MODULE_PATH}.UserProfile')
+    def test_configure_user_profile_without_auto_generated_email(
+        self,
+        user_profile_mock: MagicMock,
+        setattr_mock: MagicMock,
+    ):
+        """Test configure_user_profile method without auto-generated email."""
+        self.lti_profile.user = self.user
+
+        self.lti_profile.configure_user_profile()
+
+        user_profile_mock.objects.get.assert_called_once_with(user=self.user)
+        setattr_mock.assert_not_called()
+        user_profile_mock.objects.get().save.assert_called_once_with()
+        user_profile_mock.objects.create.assert_not_called()
+
+    @patch.object(
+        LtiProfile,
+        'user_profile_field_values',
+        new_callable=PropertyMock,
+        return_value={},
+    )
+    @patch(f'{MODULE_PATH}.UserProfile')
+    def test_configure_user_profile_without_user_profile(
+        self,
+        user_profile_mock: MagicMock,
+        user_profile_field_values_mock: MagicMock,
+    ):
+        """Test configure_user_profile method without UserProfile."""
+        user_profile_mock.objects.get.side_effect = ObjectDoesNotExist
+
+        self.lti_profile.configure_user_profile()
+
+        user_profile_mock.objects.get.assert_called_once_with(user=self.lti_profile.user)
+        user_profile_field_values_mock.assert_called_once()
+        user_profile_mock.objects.create.assert_called_once_with(
+            user=self.lti_profile.user,
+            **user_profile_field_values_mock(),
+        )
 
     @patch(f'{MODULE_PATH}.super')
-    @patch(f'{MODULE_PATH}.user_profile')
+    @patch.object(LtiProfile, 'configure_user_profile')
     @patch.object(LtiProfile, 'configure_user')
     def test_save(
         self,
         configure_user_mock: MagicMock,
-        user_profile_mock: MagicMock,
+        configure_user_profile_mock: MagicMock,
         super_mock: MagicMock,
     ):
         """Test save method."""
@@ -171,10 +302,7 @@ class TestLtiProfile(TestCase):
 
         self.assertEqual(self.lti_profile.pii, {**self.pii, **self.new_pii})
         configure_user_mock.assert_called_once_with()
-        user_profile_mock().objects.update_or_create.assert_called_once_with(
-            user=self.lti_profile.user,
-            defaults={'name': self.lti_profile.name[:255]},
-        )
+        configure_user_profile_mock.assert_called_once_with()
         super_mock().save.assert_called_once_with([], {})
 
     @patch(f'{MODULE_PATH}.shortuuid.encode')
@@ -266,6 +394,32 @@ class TestLtiProfile(TestCase):
         self.assertEqual(
             self.lti_profile.email,
             f'{self.lti_profile.uuid}@{app_config.domain_name}',
+        )
+
+    @patch(f'{MODULE_PATH}.EmailValidator')
+    def test_pii_email_property(self, email_validator_mock: MagicMock):
+        """Test pii_email property."""
+        self.lti_profile.pii = {'email': EMAIL}
+
+        self.assertEqual(self.lti_profile.pii_email, EMAIL)
+        email_validator_mock.assert_called_once_with()
+        email_validator_mock().assert_called_once_with(EMAIL)
+
+    @patch(f'{MODULE_PATH}.EmailValidator')
+    def test_pii_email_property_with_invalid_email(self, email_validator_mock: MagicMock):
+        """Test pii_email property with invalid email."""
+        email_validator_mock.return_value.side_effect = ValidationError('random-error')
+        self.lti_profile.pii = {'email': EMAIL}
+
+        self.assertEqual(self.lti_profile.pii_email, '')
+        email_validator_mock.assert_called_once_with()
+        email_validator_mock().assert_called_once_with(EMAIL)
+
+    def test_user_profile_field_values(self):
+        """Test user_profile_field_values method."""
+        self.assertEqual(
+            self.lti_profile.user_profile_field_values,
+            {'name': self.lti_profile.name[:255]},
         )
 
     def test_str_method(self):
