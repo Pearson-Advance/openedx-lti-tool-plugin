@@ -1,4 +1,4 @@
-"""Tests for the openedx_lti_tool_plugin admin module."""
+"""Test admin module."""
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,19 +10,66 @@ from openedx_lti_tool_plugin.tests import AUD, ISS, SUB
 
 
 class TestLtiProfileAdmin(TestCase):
-    """Test LTI 1.3 profile admin functionality."""
+    """Test LtiProfileAdmin admin configuration."""
 
     def setUp(self):
-        """Test fixtures setup."""
+        """Set up test fixtures."""
         self.admin = LtiProfileAdmin(LtiProfile, AdminSite)
-        self.user = get_user_model().objects.create_superuser(username='x', password='x', email='x@example.com')
+        self.user = get_user_model().objects.create_superuser(
+            username='test-username',
+            email='test@example.com',
+        )
         self.client.force_login(self.user)
-        self.profile = LtiProfile.objects.create(platform_id=ISS, client_id=AUD, subject_id=SUB)
+        self.lti_profile = LtiProfile.objects.create(
+            platform_id=ISS,
+            client_id=AUD,
+            subject_id=SUB,
+        )
 
     def test_instance_attributes(self):
         """Test instance attributes."""
-        self.assertEqual(self.admin.list_display, ('id', 'uuid', 'platform_id', 'client_id', 'subject_id'))
-        self.assertEqual(self.admin.search_fields, ['id', 'uuid', 'platform_id', 'client_id', 'subject_id'])
+        self.assertEqual(
+            self.admin.readonly_fields, [
+                'uuid',
+                'user',
+            ],
+        )
+        self.assertEqual(
+            self.admin.list_display,
+            (
+                'id',
+                'uuid',
+                'platform_id',
+                'client_id',
+                'subject_id',
+                'user_id',
+                'user_email',
+            ),
+        )
+        self.assertEqual(
+            self.admin.search_fields, [
+                'id',
+                'uuid',
+                'platform_id',
+                'client_id',
+                'subject_id',
+                'user__email',
+            ],
+        )
+
+    def test_user_id(self):
+        """Test user_id method."""
+        self.assertEqual(
+            self.admin.user_id(self.lti_profile),
+            self.lti_profile.user.id,
+        )
+
+    def test_user_email(self):
+        """Test user_email method."""
+        self.assertEqual(
+            self.admin.user_email(self.lti_profile),
+            self.lti_profile.user.email,
+        )
 
 
 class TestLtiToolConfigurationAdmin(TestCase):
