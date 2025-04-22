@@ -1,5 +1,5 @@
 """Tests views module."""
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from django.conf import settings
@@ -17,9 +17,7 @@ from openedx_lti_tool_plugin.deep_linking.views import DeepLinkingFormView, Deep
 MODULE_PATH = f'{MODULE_PATH}.views'
 
 
-@patch.object(DeepLinkingView, 'tool_config', new_callable=PropertyMock)
-@patch.object(DeepLinkingView, 'tool_storage', new_callable=PropertyMock)
-@patch(f'{MODULE_PATH}.DjangoMessageLaunch')
+@patch.object(DeepLinkingView, 'get_message')
 @patch(f'{MODULE_PATH}.validate_deep_linking_message')
 @patch(f'{MODULE_PATH}.redirect')
 class TestDeepLinkingViewPost(TestCase):
@@ -35,26 +33,20 @@ class TestDeepLinkingViewPost(TestCase):
         self,
         redirect_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
-        message_launch_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        get_message_mock: MagicMock,
     ):
         """Test with deep linking request (happy path)."""
         self.assertEqual(
             self.view_class.as_view()(self.request),
             redirect_mock.return_value,
         )
-        message_launch_mock.assert_called_once_with(
-            self.request,
-            tool_conf_mock(),
-            launch_data_storage=tool_storage_mock(),
-        )
-        validate_deep_linking_message_mock.assert_called_once_with(message_launch_mock())
-        message_launch_mock().get_launch_id.assert_called_once_with()
-        message_launch_mock().get_launch_id().replace.assert_called_once_with('lti1p3-launch-', '')
+        get_message_mock.assert_called_once_with(self.request)
+        validate_deep_linking_message_mock.assert_called_once_with(get_message_mock())
+        get_message_mock().get_launch_id.assert_called_once_with()
+        get_message_mock().get_launch_id().replace.assert_called_once_with('lti1p3-launch-', '')
         redirect_mock.assert_called_once_with(
             f'{app_config.name}:1.3:deep-linking:form',
-            launch_id=message_launch_mock().get_launch_id().replace(),
+            launch_id=get_message_mock().get_launch_id().replace(),
         )
 
     @patch.object(DeepLinkingView, 'http_response_error')
@@ -63,23 +55,17 @@ class TestDeepLinkingViewPost(TestCase):
         http_response_error_mock: MagicMock,
         redirect_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
-        message_launch_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        get_message_mock: MagicMock,
     ):
         """Test with LtiException."""
         exception = LtiException('Error message')
-        message_launch_mock.side_effect = exception
+        get_message_mock.side_effect = exception
 
         self.assertEqual(
             self.view_class.as_view()(self.request),
             http_response_error_mock.return_value,
         )
-        message_launch_mock.assert_called_once_with(
-            self.request,
-            tool_conf_mock(),
-            launch_data_storage=tool_storage_mock(),
-        )
+        get_message_mock.assert_called_once_with(self.request)
         validate_deep_linking_message_mock.assert_not_called()
         redirect_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
@@ -90,9 +76,7 @@ class TestDeepLinkingViewPost(TestCase):
         http_response_error_mock: MagicMock,
         redirect_mock: MagicMock,
         validate_deep_linking_message_mock: MagicMock,
-        message_launch_mock: MagicMock,
-        tool_storage_mock: MagicMock,
-        tool_conf_mock: MagicMock,
+        get_message_mock: MagicMock,
     ):
         """Test with DeepLinkingException."""
         exception = DeepLinkingException('Error message')
@@ -102,12 +86,8 @@ class TestDeepLinkingViewPost(TestCase):
             self.view_class.as_view()(self.request),
             http_response_error_mock.return_value,
         )
-        message_launch_mock.assert_called_once_with(
-            self.request,
-            tool_conf_mock(),
-            launch_data_storage=tool_storage_mock(),
-        )
-        validate_deep_linking_message_mock.assert_called_once_with(message_launch_mock())
+        get_message_mock.assert_called_once_with(self.request)
+        validate_deep_linking_message_mock.assert_called_once_with(get_message_mock())
         redirect_mock.assert_not_called()
         http_response_error_mock.assert_called_once_with(exception)
 

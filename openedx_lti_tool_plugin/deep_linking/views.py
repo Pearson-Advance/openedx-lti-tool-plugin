@@ -10,7 +10,6 @@ from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
-from pylti1p3.contrib.django import DjangoMessageLaunch
 from pylti1p3.exception import LtiException
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
@@ -53,11 +52,7 @@ class DeepLinkingView(LTIToolView):
         """
         try:
             # Get launch message.
-            message = DjangoMessageLaunch(
-                request,
-                self.tool_config,
-                launch_data_storage=self.tool_storage,
-            )
+            message = self.get_message(request)
             # Check launch message type.
             validate_deep_linking_message(message)
             # Redirect to DeepLinkingForm view.

@@ -14,7 +14,7 @@ from django.contrib.auth import authenticate, login
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse, HttpResponseRedirect
 from django.http.request import HttpRequest
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -31,7 +31,8 @@ from openedx_lti_tool_plugin.edxapp_wrapper.user_authn_module import set_logged_
 from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration, UserT
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
-from openedx_lti_tool_plugin.resource_link_launch.exceptions import LtiToolLaunchException
+from openedx_lti_tool_plugin.resource_link_launch.exceptions import ResourceLinkException
+from openedx_lti_tool_plugin.resource_link_launch.utils import validate_resource_link_message
 from openedx_lti_tool_plugin.utils import get_identity_claims
 from openedx_lti_tool_plugin.views import LTIToolView
 from openedx_lti_tool_plugin.waffle import ALLOW_COMPLETE_COURSE_LAUNCH, COURSE_ACCESS_CONFIGURATION
@@ -48,6 +49,9 @@ class ResourceLinkLaunchView(LTIToolView):
 
     This view handles the LTI resource link launch request workflow.
 
+    Attributes:
+        LOGIN_PROMPT_TEMPLATE (str): Login prompt template name.
+
     .. _LTI Core Specification 1.3 - Resource link launch request message:
         https://www.imsglobal.org/spec/lti/v1p3#resource-link-launch-request-message
 
@@ -56,6 +60,19 @@ class ResourceLinkLaunchView(LTIToolView):
 
     """
 
+    LOGIN_PROMPT_TEMPLATE = 'openedx_lti_tool_plugin/resource_link/login_prompt.html'
+
+    def get(self, request: HttpRequest) -> Union[HttpResponseRedirect, LoggedHttpResponseBadRequest]:
+        """HTTP GET request method.
+
+        Args:
+            request: HTTP request object.
+
+        Returns:
+            HTTP redirect response or HTTP 400 response.
+        """
+        return self.post(request)
+
     def post(
         self,
         request: HttpRequest,
@@ -63,7 +80,7 @@ class ResourceLinkLaunchView(LTIToolView):
     ) -> Union[HttpResponse, LoggedHttpResponseBadRequest]:
         """HTTP POST request method.
 
-        Return a resource link launch response for course, unit or component.
+        Return an LTI resource link launch response.
 
         Args:
             request: HttpRequest object.
@@ -71,10 +88,6 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Returns:
             HttpResponse with resource or LoggedHttpResponseBadRequest.
-
-        Raises:
-            LtiToolLaunchException: If launch message `message_type` claims
-                is not equal to LtiResourceLinkRequest.
 
         .. _LTI Core Specification 1.3 - Resource link launch request message:
             https://www.imsglobal.org/spec/lti/v1p3#resource-link-launch-request-message
@@ -87,68 +100,104 @@ class ResourceLinkLaunchView(LTIToolView):
 
         """
         try:
-            # Get launch message.
-            launch_message = DjangoMessageLaunch(
-                request,
-                self.tool_config,
-                launch_data_storage=self.tool_storage,
-            )
-            # Check launch message type.
-            if not launch_message.is_resource_launch():
-                raise LtiToolLaunchException(
-                    _('Message type is not LtiResourceLinkRequest.'),
-                )
-            # Get launch data.
-            launch_data = launch_message.get_launch_data()
+            # Get DjangoMessageLaunch.
+            message = self.try_get_message(request)
+
+            # Validate DjangoMessageLaunch.
+            validate_resource_link_message(message)
+
+            # Get DjangoMessageLaunch claims.
+            claims = message.get_launch_data()
+
             # Get resource ID.
-            resource_id = self.get_resource_id(resource_id, launch_data.get(CUSTOM_CLAIM, {}))
+            resource_id = self.get_resource_id(resource_id, claims.get(CUSTOM_CLAIM, {}))
+
             # Get CourseKey and UsageKey from resource ID.
             course_key, usage_key = self.get_opaque_keys(resource_id)
+
             # Validate CourseKey and UsageKey.
             self.validate_opaque_keys(course_key, usage_key, resource_id)
-            # Get identity claims from launch data.
-            iss, aud, sub, pii = get_identity_claims(launch_data)
+
+            # Get identity claims.
+            iss, aud, sub, pii = get_identity_claims(claims)
+
+            # Get LtiToolConfiguration.
+            lti_tool_configuration = self.get_lti_tool_configuration(iss, aud)
+
             # Check course access permission.
-            self.check_course_access_permission(str(course_key), iss, aud)
-            # Update or create LtiProfile.
-            lti_profile, _created = LtiProfile.objects.update_or_create(
-                platform_id=iss,
-                client_id=aud,
-                subject_id=sub,
-                defaults={'pii': pii},
+            self.check_course_access_permission(str(course_key), lti_tool_configuration)
+
+            # Get or create LtiProfile.
+            lti_profile = self.get_or_create_lti_profile(
+                request,
+                iss,
+                aud,
+                sub,
+                pii,
+                lti_tool_configuration,
             )
-            # Authenticate and login user.
-            edx_user = self.authenticate_and_login(request, iss, aud, sub)
-            # Enroll user.
-            self.enroll(request, edx_user, course_key)
-            # Get launch response.
+
+            # LtiProfile does not exist or could not be created.
+            if not lti_profile:
+                # Render login prompt.
+                return self.render_login_prompt(request, message, lti_tool_configuration)
+
+            # Authenticate and login User.
+            user = self.authenticate_and_login(request, iss, aud, sub)
+
+            # Enroll User.
+            self.enroll(request, user, course_key)
+
+            # Get resource link response.
             response = self.get_launch_response(
                 request,
-                edx_user,
+                user,
                 course_key,
                 usage_key,
             )
+
             # Handle AGS.
             self.handle_ags(
-                launch_message,
-                launch_data,
+                message,
+                claims,
                 lti_profile,
                 resource_id,
             )
 
             return response
-        except (LtiException, LtiToolLaunchException) as exc:
+        except (LtiException, ResourceLinkException) as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3 Resource Link Launch: {exc}'))
+
+    def try_get_message(self, request: HttpRequest) -> DjangoMessageLaunch:
+        """Try get DjangoMessageLaunch object.
+
+        This method will try to get the DjangoMessageLaunch object from the cache
+        or from the request if the DjangoMessageLaunch is not in the cache.
+
+        Args:
+            request: HttpRequest object.
+
+        Returns:
+            DjangoMessageLaunch object.
+
+        """
+        try:
+            return self.get_message_from_cache(
+                request,
+                request.GET.get('launch_id', ''),
+            )
+        except LtiException:
+            return self.get_message(request)
 
     @staticmethod
     def get_resource_id(resource_id: str, custom_parameters: dict) -> str:
         """Get resource ID.
 
-        Obtain resource ID from `resource_id` or LTI launch custom parameters.
+        Obtain resource ID from `resource_id` or custom parameters claim.
 
         Args:
             resource_id: Resource ID string.
-            custom_parameters: LTI launch custom parameters dictionary.
+            custom_parameters: Custom parameters dictionary.
 
         Returns:
             Resource ID string.
@@ -162,14 +211,10 @@ class ResourceLinkLaunchView(LTIToolView):
     ) -> Tuple[Optional[CourseKey], Optional[UsageKey]]:
         """Get OpaqueKey(s) from resource ID.
 
-        This function will obtain a CourseKey or OpaqueKey
-        from the `resource_id` obtained from the LTI Resource Link Launch.
+        This function will obtain a CourseKey or OpaqueKey from the resource ID.
 
         Args:
             resource_id: Resource ID string.
-
-        Raises:
-            LtiToolLaunchException: If CourseKey cannot be obtained from `resource_id`.
 
         Returns:
             Tuple with CourseKey, UsageKey or None.
@@ -178,13 +223,11 @@ class ResourceLinkLaunchView(LTIToolView):
         course_key = None
         usage_key = None
 
-        # Extract CourseKey from resource ID.
         try:
             course_key = CourseKey.from_string(resource_id)
         except InvalidKeyError:
             pass
 
-        # Extract UsageKey from resource ID.
         try:
             usage_key = UsageKey.from_string(resource_id)
             course_key = usage_key.course_key
@@ -207,38 +250,63 @@ class ResourceLinkLaunchView(LTIToolView):
             resource_id: Resource ID string.
 
         Raises:
-            LtiToolLaunchException: If `course_key` is not an instance of CourseKey
-                If `usage_key` is an instance of UsageKey and `usage_key.block_type`
-                is `chapter`, `sequential` or `course`.
+            ResourceLinkException: If course_key is not found or
+                if usage_key.block_type is chapter, sequential or course.
 
         """
-        # Check CourseKey exists.
         if not course_key:
-            raise LtiToolLaunchException(
+            raise ResourceLinkException(
                 _(f'CourseKey not found from resource ID: {resource_id}'),
             )
-        # Validate UsageKey XBlock type if any.
+
         if (
             usage_key
             and usage_key.block_type in ['chapter', 'sequential', 'course']
         ):
-            raise LtiToolLaunchException(
+            raise ResourceLinkException(
                 _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),
             )
 
-    def check_course_access_permission(self, course_id: str, iss: str, aud: str):
-        """Check course access permission.
-
-        This function will check if the given `course_id` is allowed by the
-        LtiToolConfiguration instance of this launch `LtiTool`.
+    def get_lti_tool_configuration(self, iss: str, aud: str) -> LtiToolConfiguration:
+        """Get LtiToolConfiguration.
 
         Args:
-            course_id: Course ID string.
             iss: Issuer claim.
             aud: Audience claim.
 
+        Returns:
+            LtiToolConfiguration instance.
+
         Raises:
-            LtiToolLaunchException: If LtiToolConfiguration instance
+            ResourceLinkException: If LtiToolConfiguration instance
+                does not exist for LtiTool.
+
+        """
+        try:
+            return LtiToolConfiguration.objects.get(
+                lti_tool=self.tool_config.get_lti_tool(iss, aud),
+            )
+        except LtiToolConfiguration.DoesNotExist as exc:
+            raise ResourceLinkException(
+                _(f'LtiToolConfiguration not found: {iss=} and {aud=}'),
+            ) from exc
+
+    @staticmethod
+    def check_course_access_permission(
+        course_id: str,
+        lti_tool_configuration: LtiToolConfiguration,
+    ):
+        """Check course access permission.
+
+        This function will check if the given `course_id` is allowed
+        by the LtiToolConfiguration.
+
+        Args:
+            course_id: Course ID string.
+            lti_tool_configuration: LtiToolConfiguration instance.
+
+        Raises:
+            ResourceLinkException: If LtiToolConfiguration instance
                 does not exist for LtiTool or the `course_id` is not allowed.
 
         .. _OpenID Connect Core 1.0 - ID Token:
@@ -248,21 +316,132 @@ class ResourceLinkLaunchView(LTIToolView):
         if not COURSE_ACCESS_CONFIGURATION.is_enabled():
             return
 
-        lti_tool = self.tool_config.get_lti_tool(iss, aud)
-        lti_tool_configuration = LtiToolConfiguration.objects.filter(
-            lti_tool=lti_tool,
-        ).first()
+        if not lti_tool_configuration.is_course_id_allowed(course_id):
+            raise ResourceLinkException(_(f'Course ID {course_id} is not allowed.'))
 
-        if not lti_tool_configuration:
-            raise LtiToolLaunchException(
-                _(f'LTI tool configuration for {lti_tool.title} not found.'),
+    @staticmethod
+    def create_lti_profile(
+        request: HttpRequest,
+        iss: str,
+        aud: str,
+        sub: str,
+        pii: dict,
+        lti_tool_configuration: LtiToolConfiguration,
+    ) -> Optional[LtiProfile]:
+        """Create LtiProfile.
+
+        Args:
+            request: HttpRequest object.
+            iss: Issuer claim.
+            aud: Audience claim.
+            sub: Subject claim.
+            pii: PII dictionary.
+            lti_tool_configuration: LtiToolConfiguration instance.
+
+        Returns:
+            LtiProfile instance or None.
+
+        """
+        user_action = request.GET.get('user_action')
+        lti_profile = None
+        lti_profile_values = {
+            'platform_id': iss,
+            'client_id': aud,
+            'subject_id': sub,
+            'pii': pii,
+        }
+
+        # LtiToolConfiguration does not allow linking User.
+        if not lti_tool_configuration.allows_linking_user():
+            lti_profile = LtiProfile.objects.create(**lti_profile_values)
+
+        # User linking is requested and LtiToolConfiguration allows it.
+        if user_action == 'link' and request.user.is_authenticated:
+            lti_profile = LtiProfile.objects.create(
+                user=request.user,
+                **lti_profile_values,
             )
 
-        if not lti_tool_configuration.is_course_id_allowed(course_id):
-            raise LtiToolLaunchException(_(f'Course ID {course_id} is not allowed.'))
+        # User creation is requested and LtiToolConfiguration does not require linking User.
+        if user_action == 'create' and not lti_tool_configuration.requires_linking_user():
+            lti_profile = LtiProfile.objects.create(**lti_profile_values)
 
-    def authenticate_and_login(
+        return lti_profile
+
+    def get_or_create_lti_profile(
         self,
+        request: HttpRequest,
+        iss: str,
+        aud: str,
+        sub: str,
+        pii: dict,
+        lti_tool_configuration: LtiToolConfiguration,
+    ) -> Optional[LtiProfile]:
+        """Get or create LtiProfile.
+
+        Args:
+            request: HttpRequest object.
+            iss: Issuer claim.
+            aud: Audience claim.
+            sub: Subject claim.
+            pii: PII dictionary.
+            lti_tool_configuration: LtiToolConfiguration instance.
+
+        Returns:
+            LtiProfile instance or None.
+
+        """
+        try:
+            # Get LtiProfile.
+            lti_profile = LtiProfile.objects.get(
+                platform_id=iss,
+                client_id=aud,
+                subject_id=sub,
+            )
+            # Update PII field.
+            lti_profile.pii = pii
+            lti_profile.save()
+
+            return lti_profile
+        except LtiProfile.DoesNotExist:
+            # Create LtiProfile.
+            return self.create_lti_profile(
+                request,
+                iss,
+                aud,
+                sub,
+                pii,
+                lti_tool_configuration,
+            )
+
+    def render_login_prompt(
+        self,
+        request: HttpRequest,
+        message: DjangoMessageLaunch,
+        lti_tool_configuration: LtiToolConfiguration,
+    ) -> HttpResponse:
+        """Render login prompt template.
+
+        Args:
+            request: HttpRequest object.
+            message: DjangoMessageLaunch object.
+            lti_tool_configuration: LtiToolConfiguration instance.
+
+        Returns:
+            HttpResponse object.
+
+        """
+        return render(
+            request,
+            self.LOGIN_PROMPT_TEMPLATE,
+            {
+                'launch_id': message.get_launch_id().replace('lti1p3-launch-', ''),
+                'lti_tool_configuration': lti_tool_configuration,
+            },
+        )
+
+    @staticmethod
+    def authenticate_and_login(
         request: HttpRequest,
         iss: str,
         aud: Union[list, str],
@@ -270,8 +449,8 @@ class ResourceLinkLaunchView(LTIToolView):
     ) -> UserT:
         """Authenticate and login.
 
-        This method will try to authenticate against an existing LtiProfile
-        using the `iss`, `aud` and `sub` claims and the LtiAuthenticationBackend.
+        This method will try to authenticate using the LtiAuthenticationBackend,
+        and login the User obtained from the LtiProfile returned by the backend.
 
         Args:
             request: HttpRequest object.
@@ -280,112 +459,108 @@ class ResourceLinkLaunchView(LTIToolView):
             sub: Subject claim.
 
         Returns:
-            Open edx User instance.
+            User instance.
+
+        Raises:
+            ResourceLinkException: If authentication fails.
 
         .. _OpenID Connect Core 1.0 - ID Token:
             https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 
         """
-        edx_user = authenticate(request, iss=iss, aud=aud, sub=sub)
+        user = authenticate(request, iss=iss, aud=aud, sub=sub)
 
-        if not edx_user:
-            raise LtiToolLaunchException(_('Profile authentication failed.'))
+        if not user:
+            raise ResourceLinkException(_('LtiProfile authentication failed.'))
 
-        login(request, edx_user)
-        mark_user_change_as_expected(edx_user.id)
+        login(request, user)
+        mark_user_change_as_expected(user.id)
 
-        return edx_user
+        return user
 
-    def enroll(self, request: HttpRequest, edx_user: UserT, course_key: str):
-        """Enroll Open edX user to course.
+    @staticmethod
+    def enroll(request: HttpRequest, user: UserT, course_key: str):
+        """Enroll User to Course.
 
         Args:
             request: HTTPRequest object.
-            edx_user: Open edX User instance.
+            user: User instance.
             course_key: Course key string.
 
         Raises:
-            LtiToolLaunchException: If CourseEnrollmentException is raised.
+            ResourceLinkException: If CourseEnrollmentException is raised.
 
         """
         try:
-            if not course_enrollment().get_enrollment(edx_user, course_key):
+            if not course_enrollment().get_enrollment(user, course_key):
                 course_enrollment().enroll(
-                    user=edx_user,
+                    user=user,
                     course_key=course_key,
                     check_access=True,
                     request=request,
                 )
         except course_enrollment_exception() as exc:
-            raise LtiToolLaunchException(_(f'Course enrollment failed: {exc}')) from exc
+            raise ResourceLinkException(_(f'Course enrollment failed: {exc}')) from exc
 
     def get_launch_response(
         self,
         request: HttpRequest,
-        edx_user: UserT,
+        user: UserT,
         course_key: CourseKey,
         usage_key: Optional[UsageKey],
     ) -> Tuple[HttpResponse, str]:
-        """Get LTI Resource Link Launch Response.
+        """Get LTI resource link launch HttpResponse.
 
-        This method builds a HTTP 302 Response to the View
-        where the learner will interact with the requested resource.
+        This method builds a HttpResponse to the requested resource.
+        If usage_key is present it will redirect to the render_xblock View.
 
-        If `usage_key` is present and valid the learner will be redirected to
-        the `render_xblock` URL path to the requested UsageKey.
-
-        If no valid `usage_key` is present and `course_key` is an instance
-        of CourseKey, the learner is redirected to the Learning MFE.
-
-        The JWT authentication cookies for Open edX are also added to the response.
+        The JWT authentication cookies are also added to the HttpResponse.
 
         Args:
             request: HTTPRequest object.
-            edx_user: User instance.
+            user: User instance.
             course_key: CourseKey object.
             usage_key: UsageKey object or None.
 
         Returns:
-            A HTTP 302 response corresponding to the requested
-            resource (course, vertical or problem).
+            A HttpResponse to the requested resource.
 
         """
         response = None
 
-        # Get vertical/problem redirect response.
         if usage_key:
             response = redirect('render_xblock', str(usage_key.course_key))
-        # Get course redirect response.
         else:
             response = self.get_course_launch_response(str(course_key))
 
-        return set_logged_in_cookies(request, response, edx_user)
+        return set_logged_in_cookies(request, response, user)
 
-    def get_course_launch_response(self, course_id: str) -> HttpResponseRedirect:
-        """Get course launch response.
+    @staticmethod
+    def get_course_launch_response(course_id: str) -> HttpResponseRedirect:
+        """Get Course launch response.
 
         Args:
             course_id: Course ID string.
 
         Returns:
-            HttpResponseRedirect to learning MFE course URL.
+            HttpResponseRedirect to the learning MFE Course URL.
 
         Raises:
-            LtiToolLaunchException: If ALLOW_COMPLETE_COURSE_LAUNCH is disabled.
+            ResourceLinkException: If ALLOW_COMPLETE_COURSE_LAUNCH is disabled.
 
         """
         if not ALLOW_COMPLETE_COURSE_LAUNCH.is_enabled():
-            raise LtiToolLaunchException(_('Complete course launches are not enabled.'))
+            raise ResourceLinkException(_('Complete course launches are not enabled.'))
 
         return redirect(
             f'{configuration_helpers().get_value("LEARNING_MICROFRONTEND_URL", settings.LEARNING_MICROFRONTEND_URL)}'
             f'/course/{course_id}'
         )
 
+    @staticmethod
     def handle_ags(  # pylint: disable=inconsistent-return-statements
-        self,
-        launch_message: DjangoMessageLaunch,
-        launch_data: dict,
+        message: DjangoMessageLaunch,
+        claims: dict,
         lti_profile: LtiProfile,
         resource_id: str,
     ):
@@ -395,26 +570,28 @@ class ResourceLinkLaunchView(LTIToolView):
         a LtiGradedResource instance does not exist.
 
         Args:
-            launch_message: DjangoMessageLaunch object.
-            launch_data: Launch data dictionary.
+            message: DjangoMessageLaunch object.
+            claims: Claims dictionary.
             lti_profile: LtiProfile instance.
             resource_id: Resource ID string.
 
         Raises:
-            LtiToolLaunchException: If `lineitem` or score scope claims are missing.
+            ResourceLinkException: If `lineitem` or score scope claims are missing.
 
         """
-        if not launch_message.has_ags():
+        if not message.has_ags():
             return None
 
-        ags_endpoint = launch_data.get(AGS_CLAIM_ENDPOINT, {})
+        ags_endpoint = claims.get(AGS_CLAIM_ENDPOINT, {})
         lineitem = ags_endpoint.get('lineitem')
 
         if not lineitem:
-            raise LtiToolLaunchException(_('Missing AGS lineitem.'))
+            raise ResourceLinkException(_('Missing AGS lineitem.'))
 
         if AGS_SCORE_SCOPE not in ags_endpoint.get('scope', []):
-            raise LtiToolLaunchException(_(f'Missing required AGS scope: {AGS_SCORE_SCOPE}'))
+            raise ResourceLinkException(
+                _(f'Missing required AGS scope: {AGS_SCORE_SCOPE}'),
+            )
 
         try:
             LtiGradedResource.objects.get_or_create(
@@ -423,4 +600,4 @@ class ResourceLinkLaunchView(LTIToolView):
                 lineitem=lineitem,
             )
         except ValidationError as exc:
-            raise LtiToolLaunchException(_(exc.messages[0])) from exc
+            raise ResourceLinkException(_(exc.messages[0])) from exc
