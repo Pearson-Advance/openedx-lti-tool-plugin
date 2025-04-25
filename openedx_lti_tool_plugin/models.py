@@ -407,6 +407,29 @@ class LtiToolConfiguration(models.Model):
         """
         return course_id in json.loads(self.allowed_course_ids)
 
+    def allows_linking_user(self) -> bool:
+        """Check if instance allows linking User to LtiProfile.
+
+        Returns:
+            True if linking User is allowed.
+            False if linking User is not allowed.
+
+        """
+        return self.user_provisioning_mode in [
+            self.UserProvisioningMode.EXISTING_ONLY,
+            self.UserProvisioningMode.EXISTING_AND_NEW,
+        ]
+
+    def requires_linking_user(self) -> bool:
+        """Check if instance requires linking User to LtiProfile.
+
+        Returns:
+            True if linking User is required.
+            False if linking User is not required.
+
+        """
+        return self.user_provisioning_mode == self.UserProvisioningMode.EXISTING_ONLY
+
     def __str__(self) -> str:
         """Get a string representation of this model instance."""
         return f'<LtiToolConfiguration, ID: {self.id}>'

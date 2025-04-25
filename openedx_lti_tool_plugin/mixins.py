@@ -1,6 +1,5 @@
 """Mixins."""
 from typing import Union
-from uuid import uuid4
 
 from django.http.request import HttpRequest
 from django.utils.translation import gettext as _
@@ -40,12 +39,31 @@ class LTIToolMixin:
         self.tool_config = DjangoDbToolConf()
         self.tool_storage = DjangoCacheDataStorage(cache_name='default')
 
+    def get_message(
+        self,
+        request: HttpRequest,
+    ) -> DjangoMessageLaunch:
+        """Get DjangoMessageLaunch.
+
+        Args:
+            request: HTTP request object.
+
+        Returns:
+            DjangoMessageLaunch object.
+
+        """
+        return DjangoMessageLaunch(
+            request,
+            self.tool_config,
+            launch_data_storage=self.tool_storage,
+        )
+
     def get_message_from_cache(
         self,
         request: HttpRequest,
-        launch_id: uuid4,
+        launch_id: str,
     ) -> DjangoMessageLaunch:
-        """Get DjangoMessageLaunch from Django cache data storage.
+        """Get DjangoMessageLaunch from cache.
 
         Args:
             request: HTTP request object.

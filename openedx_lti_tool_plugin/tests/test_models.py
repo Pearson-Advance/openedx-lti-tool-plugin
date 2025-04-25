@@ -430,6 +430,7 @@ class TestLtiProfile(TestCase):
         )
 
 
+@ddt.ddt
 class TestLtiToolConfiguration(TestCase):
     """Test LTI tool configuration model."""
 
@@ -571,6 +572,30 @@ class TestLtiToolConfiguration(TestCase):
 
         self.assertFalse(self.tool_configuration.is_course_id_allowed('id-3'))
         json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
+
+    @ddt.data(
+        (LtiToolConfiguration.UserProvisioningMode.EXISTING_ONLY, True),
+        (LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW, True),
+        (LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY, False),
+    )
+    @ddt.unpack
+    def test_allows_linking_user(self, value: str, result: bool):
+        """Test allows_linking_user method."""
+        self.tool_configuration.user_provisioning_mode = value
+
+        self.assertEqual(self.tool_configuration.allows_linking_user(), result)
+
+    @ddt.data(
+        (LtiToolConfiguration.UserProvisioningMode.EXISTING_ONLY, True),
+        (LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW, False),
+        (LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY, False),
+    )
+    @ddt.unpack
+    def test_requires_linking_user(self, value: str, result: bool):
+        """Test requires_linking_user method."""
+        self.tool_configuration.user_provisioning_mode = value
+
+        self.assertEqual(self.tool_configuration.requires_linking_user(), result)
 
     def test_str_method(self):
         """Test __str__ method return value."""

@@ -39,6 +39,26 @@ class TestLTIToolMixin(TestCase):
     @patch.object(LTIToolMixin, 'tool_config', new_callable=PropertyMock)
     @patch.object(LTIToolMixin, 'tool_storage', new_callable=PropertyMock)
     @patch(f'{MODULE_PATH}.DjangoMessageLaunch')
+    def test_get_message(
+        self,
+        message_launch_mock: MagicMock,
+        tool_storage_mock: MagicMock,
+        tool_conf_mock: MagicMock,
+    ):
+        """Test get_message method."""
+        self.assertEqual(
+            self.mixin_class().get_message(self.request),
+            message_launch_mock.return_value,
+        )
+        message_launch_mock.assert_called_once_with(
+            self.request,
+            tool_conf_mock(),
+            launch_data_storage=tool_storage_mock(),
+        )
+
+    @patch.object(LTIToolMixin, 'tool_config', new_callable=PropertyMock)
+    @patch.object(LTIToolMixin, 'tool_storage', new_callable=PropertyMock)
+    @patch(f'{MODULE_PATH}.DjangoMessageLaunch')
     def test_get_message_from_cache(
         self,
         message_launch_mock: MagicMock,
