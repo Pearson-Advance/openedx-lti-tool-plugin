@@ -1,6 +1,108 @@
-{# TODO: This needs to be replaced with a prompt to ask the user to login or create a new User. #}
-<ul>
-    <li>Launch ID: {{ launch_id }}</li>
-    <li>Requires Linking User: {{ lti_tool_configuration.requires_linking_user }}</li>
-    <li>User Provisioning Mode: {{ lti_tool_configuration.user_provisioning_mode }}</li>
-</ul>
+{% extends 'openedx_lti_tool_plugin/base.html' %}
+{% load i18n %}
+
+{% block title %}{% translate 'Resource Link Launch' %}{% endblock %}
+
+{% block body_content %}
+{{ block.super }}
+<div class='container my-4'>
+  <h2>{% translate 'Welcome!' %}</h2>
+  <div class='alert alert-info alert-block'>
+    {% translate 'It looks like this is your first time here. Please select from one of the following account options.' %}
+  </div>
+  <div class='row'>
+    <div class='col-lg-6 mb-2'>
+      <div class='card'>
+        <div class='card-header'>{% translate 'I have an existing account' %}</div>
+        <div class='card-body'>
+          <h4 class='card-title'>{% translate 'Use existing account' %}</h4>
+          {% if user.is_authenticated %}
+          <p class='card-text'>
+            <span class='text-muted'>{% translate 'You are currently logged in as:' %} </span>
+            {{ user.profile.name }} ({{ user.email }})
+          </p>
+          <button type='button' class='btn btn-primary' data-toggle='modal' data-target='#linkAccountModal'>
+            {% translate 'Link this account' %}
+          </button>
+          <a
+            class='btn btn-light'
+            href='/logout?next={{ request.path }}?launch_id={{ launch_id }}'>
+            {% translate 'Logout' %}
+          </a>
+          {% else %}
+          <p class='card-text text-muted'>{% translate 'Log in to link your existing account.' %}</p>
+          <a
+            class='btn btn-primary'
+            href='/login?next={{ request.path }}?launch_id={{ launch_id }}'>
+            {% translate 'Login' %}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% if not lti_tool_configuration.requires_linking_user %}
+    <div class='col-lg-6 mb-2'>
+      <div class='card'>
+        <div class='card-header'>{% translate "I'd like to create a new account." %}</div>
+        <div class='card-body'>
+          <h4 class='card-title'>{% translate 'Create account' %}</h4>
+          <p class='card-text text-muted'>{% translate 'Get started with a new account' %}</p>
+          <button type='button' class='btn btn-secondary' data-toggle='modal' data-target='#createAccountModal'>
+            {% translate 'Create an account for me' %}
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class='modal fade' id='linkAccountModal' tabindex='-1' role='dialog' aria-labelledby='linkAccountModalLabel' aria-hidden='true'>
+    <div class='modal-dialog' role='document'>
+      <div class='modal-content'>
+        <div class='modal-header'>
+          <h5 class='modal-title' id='linkAccountModalLabel'>{% translate 'Confirm' %}</h5>
+          <button type='button' class='close' data-dismiss='modal' aria-label='Close'>
+            <span aria-hidden='true'>&times;</span>
+          </button>
+        </div>
+        <div class='modal-body'>{% translate 'Are you sure you want to link this account?' %}</div>
+        <div class='modal-footer'>
+          <a
+          class='btn btn-primary'
+          href='{{ request.path }}?launch_id={{ launch_id }}&user_action=link'>
+            {% translate 'Yes' %}
+          </a>
+          <button type='button' class='btn btn-secondary' data-dismiss='modal'>{% translate 'No' %}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class='modal fade' id='createAccountModal' tabindex='-1' role='dialog' aria-labelledby='createAccountModalLabel' aria-hidden='true'>
+    <div class='modal-dialog' role='document'>
+      <div class='modal-content'>
+        <div class='modal-header'>
+          <h5 class='modal-title' id='createAccountModalLabel'>{% translate 'Confirm' %}</h5>
+          <button type='button' class='close' data-dismiss='modal' aria-label='Close'>
+            <span aria-hidden='true'>&times;</span>
+          </button>
+        </div>
+        <div class='modal-body'>{% translate 'Are you sure you want to create a new account?' %}</div>
+        <div class='modal-footer'>
+          <a
+          class='btn btn-primary'
+          href='{{ request.path }}?launch_id={{ launch_id }}&user_action=create'>
+            {% translate 'Yes' %}
+          </a>
+          <button type='button' class='btn btn-secondary' data-dismiss='modal'>{% translate 'No' %}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_js %}
+{{ block.super }}
+<script src='https://code.jquery.com/jquery-3.3.1.slim.min.js' integrity='sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo' crossorigin='anonymous'></script>
+<script src='https://cdn.jsdelivr.net/npm/popper.js@1.14.3/dist/umd/popper.min.js' integrity='sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49' crossorigin='anonymous'></script>
+<script src='https://cdn.jsdelivr.net/npm/bootstrap@4.1.3/dist/js/bootstrap.min.js' integrity='sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy' crossorigin='anonymous'></script>
+{% endblock %}
