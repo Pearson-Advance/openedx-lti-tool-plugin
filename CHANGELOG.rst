@@ -16,20 +16,42 @@ Unreleased
 
 *
 
+0.3.0 - 2025-05-08
+********************
+
+Added
+=====
+
+- Added user provisioning mode feature to ResourceLinkLaunchView
+- Add mising CourseContext migration
+- Add missing LtiToolConfiguration migration
+
+Changed
+=======
+
+- Changed LtiProfile.user field to ForeignKeyfield
+- Use LtiProfile.pii email to auto-generate LtiProfile.user
+- LtiProfile Django admin configuration improved
+- Changed DeepLinkingView to use get_message method
+- Changed DeepLinkingException to inherit LtiToolException
+- Updated CI GitHub Workflow
+- Updated docstrings
+- Updated unit tests
+
 0.2.2 - 2025-03-11
 ********************
 
 Added
 =====
 
-* Added `user_provisioning_mode` field to control how user accounts are created during LTI launches
+- Added user_provisioning_mode field to LtiToolConfiguration
 
 Changed
 =======
 
-* Renamed `CourseAccessConfiguration` class to `LtiToolConfiguration`
-* Updated all references to the renamed class throughout the plugin
-* Updated unit tests
+- Renamed CourseAccessConfiguration class to LtiToolConfiguration
+- Updated all references to the renamed class throughout the plugin
+- Updated unit tests
 
 0.2.1 - 2025-03-07
 ********************
@@ -258,7 +280,9 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.0
+[0.2.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.2
 [0.2.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.0
 [0.1.8]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.1.8
