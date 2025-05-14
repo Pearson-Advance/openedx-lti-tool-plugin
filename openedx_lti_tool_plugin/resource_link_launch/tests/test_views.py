@@ -220,6 +220,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             self.request,
             try_get_message_mock(),
             get_lti_tool_configuration_mock(),
+            PII,
         )
         authenticate_and_login_mock.assert_not_called()
         enroll_mock.assert_not_called()
@@ -605,11 +606,12 @@ class TestResourceLinkLaunchViewCreateLtiProfile(ResourceLinkLaunchViewBaseTestC
             pii=PII,
         )
 
-    def test_link_user_action_and_user_authenticated(
+    def test_link_user_action(
         self,
         lti_profile_create_mock: MagicMock,
     ):
-        """Test request user_action is 'link' and request.user is authenticated."""
+        """Test request user_action is 'link'."""
+        PII['email'] = self.user.email
         self.request.GET = {'user_action': 'link'}
 
         self.assertEqual(
@@ -632,11 +634,32 @@ class TestResourceLinkLaunchViewCreateLtiProfile(ResourceLinkLaunchViewBaseTestC
             pii=PII,
         )
 
-    def test_create_user_action_and_not_requires_linking_user(
+    def test_link_user_action_with_not_equal_pii_email(
         self,
         lti_profile_create_mock: MagicMock,
     ):
-        """Test request user_action is 'create' and requires_linking_user is False."""
+        """Test request user_action is 'link' and PII email is not equal to user email."""
+        PII['email'] = 'other@example.com'
+        self.request.GET = {'user_action': 'link'}
+
+        self.assertIsNone(
+            self.view_class().create_lti_profile(
+                self.request,
+                ISS,
+                AUD,
+                SUB,
+                PII,
+                self.lti_tool_configuration,
+            ),
+        )
+        self.lti_tool_configuration.allows_linking_user.assert_called_once_with()
+        lti_profile_create_mock.assert_not_called()
+
+    def test_create_user_action(
+        self,
+        lti_profile_create_mock: MagicMock,
+    ):
+        """Test request user_action is 'create'."""
         self.request.GET = {'user_action': 'create'}
         self.lti_tool_configuration.requires_linking_user.return_value = False
 
@@ -759,6 +782,7 @@ class TestResourceLinkLaunchViewRenderLoginPrompt(ResourceLinkLaunchViewBaseTest
                 None,
                 self.message,
                 self.lti_tool_configuration,
+                PII,
             ),
             render_mock.return_value,
         )
@@ -770,6 +794,7 @@ class TestResourceLinkLaunchViewRenderLoginPrompt(ResourceLinkLaunchViewBaseTest
             {
                 'launch_id': self.message.get_launch_id().replace(),
                 'lti_tool_configuration': self.lti_tool_configuration,
+                'pii': PII,
             },
         )
 

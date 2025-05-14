@@ -17,13 +17,23 @@
         <div class='card-body'>
           <h4 class='card-title'>{% translate 'Use existing account' %}</h4>
           {% if user.is_authenticated %}
-          <p class='card-text'>
-            <span class='text-muted'>{% translate 'You are currently logged in as:' %} </span>
-            {{ user.profile.name }} ({{ user.email }})
-          </p>
+          <div class='card-text'>
+            <p>
+              <span class='text-muted'>{% translate 'You are currently logged in as:' %}</span>
+              {{ user.profile.name }} ({{ user.email }})
+            </p>
+            {% if pii.email and request.user.email != pii.email %}
+            <div class='alert alert-warning alert-block'>
+              {% translate 'Logged account must be using the email:' %} {{ pii.email }}
+            </div>
+            {% endif %}
+          </div>
+          {% if pii.email and request.user.email != pii.email %}
+          {% else %}
           <button type='button' class='btn btn-primary' data-toggle='modal' data-target='#linkAccountModal'>
             {% translate 'Link this account' %}
           </button>
+          {% endif %}
           <a
             class='btn btn-light'
             href='/logout?next={{ request.path }}?launch_id={{ launch_id }}'>
