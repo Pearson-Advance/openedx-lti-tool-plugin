@@ -140,7 +140,12 @@ class ResourceLinkLaunchView(LTIToolView):
             # LtiProfile does not exist or could not be created.
             if not lti_profile:
                 # Render login prompt.
-                return self.render_login_prompt(request, message, lti_tool_configuration)
+                return self.render_login_prompt(
+                    request,
+                    message,
+                    lti_tool_configuration,
+                    pii,
+                )
 
             # Authenticate and login User.
             user = self.authenticate_and_login(request, iss, aud, sub)
@@ -356,7 +361,12 @@ class ResourceLinkLaunchView(LTIToolView):
             lti_profile = LtiProfile.objects.create(**lti_profile_values)
 
         # User linking is requested and LtiToolConfiguration allows it.
-        if user_action == 'link' and request.user.is_authenticated:
+        # also the user is authenticated and the email matches the PII email.
+        if (
+            user_action == 'link'
+            and request.user.is_authenticated
+            and request.user.email == pii.get('email', request.user.email)
+        ):
             lti_profile = LtiProfile.objects.create(
                 user=request.user,
                 **lti_profile_values,
@@ -419,6 +429,7 @@ class ResourceLinkLaunchView(LTIToolView):
         request: HttpRequest,
         message: DjangoMessageLaunch,
         lti_tool_configuration: LtiToolConfiguration,
+        pii: dict,
     ) -> HttpResponse:
         """Render login prompt template.
 
@@ -426,6 +437,7 @@ class ResourceLinkLaunchView(LTIToolView):
             request: HttpRequest object.
             message: DjangoMessageLaunch object.
             lti_tool_configuration: LtiToolConfiguration instance.
+            pii: PII dictionary.
 
         Returns:
             HttpResponse object.
@@ -437,6 +449,7 @@ class ResourceLinkLaunchView(LTIToolView):
             {
                 'launch_id': message.get_launch_id().replace('lti1p3-launch-', ''),
                 'lti_tool_configuration': lti_tool_configuration,
+                'pii': pii,
             },
         )
 
