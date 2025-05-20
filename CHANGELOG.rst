@@ -16,6 +16,14 @@ Unreleased
 
 *
 
+0.3.1 - 2025-05-20
+********************
+
+Changed
+=======
+
+- Make user provision use PII email on link.
+
 0.3.0 - 2025-05-08
 ********************
 
@@ -280,7 +288,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.0
 [0.2.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.2
 [0.2.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.1
