@@ -69,6 +69,9 @@ LEARNING_MICROFRONTEND_URL = 'example.com'
 # General settings
 OLTITP_ENABLE_LTI_TOOL = True
 
+# Resource link launch settings
+OLTITP_LOGIN_PROMPT_TEMPLATE = 'openedx_lti_tool_plugin/resource_link/login_prompt.html'
+
 # Deep linking settings
 OLTITP_DEEP_LINKING_FORM_TEMPLATE = 'openedx_lti_tool_plugin/deep_linking/form.html'
 

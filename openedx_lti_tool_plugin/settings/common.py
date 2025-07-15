@@ -43,6 +43,9 @@ def plugin_settings(settings: LazySettings):
     # General settings
     settings.OLTITP_ENABLE_LTI_TOOL = False
 
+    # Resource link launch settings
+    settings.OLTITP_LOGIN_PROMPT_TEMPLATE = 'openedx_lti_tool_plugin/resource_link/login_prompt.html'
+
     # Deep linking settings
     settings.OLTITP_DEEP_LINKING_FORM_TEMPLATE = 'openedx_lti_tool_plugin/deep_linking/form.html'
 
