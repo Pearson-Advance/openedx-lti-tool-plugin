@@ -49,9 +49,6 @@ class ResourceLinkLaunchView(LTIToolView):
 
     This view handles the LTI resource link launch request workflow.
 
-    Attributes:
-        LOGIN_PROMPT_TEMPLATE (str): Login prompt template name.
-
     .. _LTI Core Specification 1.3 - Resource link launch request message:
         https://www.imsglobal.org/spec/lti/v1p3#resource-link-launch-request-message
 
@@ -59,8 +56,6 @@ class ResourceLinkLaunchView(LTIToolView):
         https://github.com/dmitry-viskov/pylti1.3?tab=readme-ov-file#lti-message-launches
 
     """
-
-    LOGIN_PROMPT_TEMPLATE = 'openedx_lti_tool_plugin/resource_link/login_prompt.html'
 
     def get(self, request: HttpRequest) -> Union[HttpResponseRedirect, LoggedHttpResponseBadRequest]:
         """HTTP GET request method.
@@ -445,7 +440,10 @@ class ResourceLinkLaunchView(LTIToolView):
         """
         return render(
             request,
-            self.LOGIN_PROMPT_TEMPLATE,
+            configuration_helpers().get_value(
+                'OLTITP_LOGIN_PROMPT_TEMPLATE',
+                settings.OLTITP_LOGIN_PROMPT_TEMPLATE,
+            ),
             {
                 'launch_id': message.get_launch_id().replace('lti1p3-launch-', ''),
                 'lti_tool_configuration': lti_tool_configuration,

@@ -772,10 +772,15 @@ class TestResourceLinkLaunchViewGetOrCreateLtiProfile(ResourceLinkLaunchViewBase
 
 
 @patch(f'{MODULE_PATH}.render')
+@patch(f'{MODULE_PATH}.configuration_helpers')
 class TestResourceLinkLaunchViewRenderLoginPrompt(ResourceLinkLaunchViewBaseTestCase):
     """Test ResourceLinkLaunchView.render_login_prompt method."""
 
-    def test_render_template(self, render_mock: MagicMock):
+    def test_render_template(
+        self,
+        configuration_helpers_mock: MagicMock,
+        render_mock: MagicMock,
+    ):
         """Test render template."""
         self.assertEqual(
             self.view_class().render_login_prompt(
@@ -786,11 +791,15 @@ class TestResourceLinkLaunchViewRenderLoginPrompt(ResourceLinkLaunchViewBaseTest
             ),
             render_mock.return_value,
         )
+        configuration_helpers_mock().get_value.assert_called_once_with(
+            'OLTITP_LOGIN_PROMPT_TEMPLATE',
+            settings.OLTITP_LOGIN_PROMPT_TEMPLATE,
+        )
         self.message.get_launch_id.assert_called_once_with()
         self.message.get_launch_id().replace.assert_called_once_with('lti1p3-launch-', '')
         render_mock.assert_called_once_with(
             None,
-            self.view_class.LOGIN_PROMPT_TEMPLATE,
+            configuration_helpers_mock().get_value(),
             {
                 'launch_id': self.message.get_launch_id().replace(),
                 'lti_tool_configuration': self.lti_tool_configuration,
