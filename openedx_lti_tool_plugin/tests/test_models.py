@@ -42,7 +42,7 @@ class TestLtiProfile(TestCase):
             platform_id=ISS,
             client_id=AUD,
             subject_id=SUB,
-            pii=self.pii
+            pii=self.pii,
         )
         self.user = get_user_model().objects.create(
             email=EMAIL,
@@ -608,14 +608,14 @@ class TestLtiToolConfiguration(TestCase):
         """Test user_provisioning_mode choices."""
         self.assertEqual(
             self.tool_configuration.user_provisioning_mode,
-            LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY
+            LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY,
         )
 
         self.tool_configuration.user_provisioning_mode = LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
         self.tool_configuration.save()
         self.assertEqual(
             self.tool_configuration.user_provisioning_mode,
-            LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
+            LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW,
         )
 
         choices = [choice[0] for choice in LtiToolConfiguration.UserProvisioningMode.choices]

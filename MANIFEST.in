@@ -3,4 +3,4 @@ include README.rst
 include requirements/base.in
 include requirements/base.txt
 include requirements/constraints.txt
-recursive-include openedx_lti_tool_plugin *.html *.png *.gif *.js *.css *.jpg *.jpeg *.svg
+recursive-include openedx_lti_tool_plugin *.html *.png *.gif *js *.css *jpg *jpeg *svg *py

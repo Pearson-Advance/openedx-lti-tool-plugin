@@ -148,7 +148,7 @@ class LtiGradedResource(models.Model):
         }
 
         try:
-            log.info(f'LTI AGS score publish request started: {log_extra}')
+            log.info('LTI AGS score publish request started: %s', log_extra)
             # Create pylti1.3 DjangoMessageLaunch object.
             message = DjangoMessageLaunch(request=None, tool_config=DjangoDbToolConf())\
                 .set_auto_validation(enable=False)\
@@ -165,14 +165,14 @@ class LtiGradedResource(models.Model):
                 .set_user_id(self.lti_profile.subject_id)
             # Send score publish request to LTI platform.
             message.get_ags().put_grade(grade)
-            log.info(f'LTI AGS score publish request success: {log_extra}')
+            log.info('LTI AGS score publish request success: %s', log_extra)
         except LtiException as exc:
             log_extra['exception'] = str(exc)
-            log.error(f'LTI AGS score publish request failure: {log_extra}')
+            log.error('LTI AGS score publish request failure: %s', log_extra)
             raise
         except RequestException as exc:
             log_extra['exception'] = str(exc)
             log_extra['request'] = getattr(exc.request, '__dict__', {})
             log_extra['response'] = getattr(exc.response, '__dict__', {})
-            log.error(f'LTI AGS score publish request failure: {log_extra}')
+            log.error('LTI AGS score publish request failure: %s', log_extra)
             raise

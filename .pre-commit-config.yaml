@@ -1,0 +1,26 @@
+# pre-commit configuration file.
+# https://pre-commit.com/
+
+exclude: '/migrations/'
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-case-conflict
+      - id: double-quote-string-fixer
+
+  - repo: https://github.com/asottile/add-trailing-comma
+    rev: v3.1.0
+    hooks:
+      - id: add-trailing-comma
+
+# Sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date.
+ci:
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false
