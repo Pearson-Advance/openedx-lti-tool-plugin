@@ -6,34 +6,44 @@ Open edX support for LTI 1.3 tool resource link launches and LTI Assignment and 
 Getting Started
 ***************
 
-Installation on Open edX Devstack
-=================================
+Installation on Open Edx Tutor
+==============================
 
-1. Install the Olive version of the Open edX devstack.
-2. Clone this repository:
+This repository can be installed into Tutor by adding it as an extra pip requirement, rebuilding the openedx image,
+and applying the required LMS settings (feature flag + auth backend).
 
-.. code-block:: bash
+**Prerequisites**
 
-  cd ~openedx/src/  # Assuming that devstack is in  ~/openedx/devstack/
-  git clone git@github.com:Pearson-Advance/openedx-lti-tool-plugin.git
+- A working Tutor environment (local or production).
+- Ability to rebuild the openedx image.
 
-3. Install plugin on your LMS:
-
-.. code-block:: bash
-
-  cd ~openedx/devstack/  # Change for your devstack path (if you are using devstack)
-  make lms-shell  # Shell into the lms container (or server where lms process runs)
-  pip install -e /edx/src/openedx-lti-tool-plugin
-  /edx/app/edxapp/edx-platform/manage.py lms migrate openedx_lti_tool_plugin # Run plugin migrations
-
-4. Set the lms setting OLTITP_ENABLE_LTI_TOOL to True and add LtiAuthenticationBackend to AUTHENTICATION_BACKENDS:
+1. Add the package to Tutor extra pip requirements
+Tutor supports installing additional Python packages into the Open edX image via OPENEDX_EXTRA_PIP_REQUIREMENTS.
 
 .. code-block:: bash
 
-  echo 'OLTITP_ENABLE_LTI_TOOL=True' >> ~openedx/edx-platform/lms/envs/devstack_docker.py
-  echo 'AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')' >> ~openedx/edx-platform/lms/envs/devstack_docker.py
+  # Prefer pinning to a tag/commit for reproducible builds
 
-5. Restart the LMS.
+  tutor config save --append OPENEDX_EXTRA_PIP_REQUIREMENTS=git+https://github.com/Pearson-Advance/openedx-lti-tool-plugin.git@<TAG_OR_COMMIT>
+
+2. Rebuild the Open edX image and launch the environment.
+
+.. code-block:: bash
+
+  tutor local launch
+
+3. Set the lms setting OLTITP_ENABLE_LTI_TOOL to True and add LtiAuthenticationBackend to AUTHENTICATION_BACKENDS:
+
+.. code-block:: bash
+
+  echo 'OLTITP_ENABLE_LTI_TOOL=True' >> ~env/apps/openedx/config/lms.env.yml
+  echo 'AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')' >> ~env/apps/openedx/config/lms.env.yml
+
+4. Restart the LMS.
+
+.. code-block:: bash
+
+  tutor local restart lms
 
 Development Setup
 =================
@@ -67,7 +77,7 @@ Development Setup
 LTI 1.3 Resource Link Launch Setup
 ==================================
 
-1. (Optional) If the LTI tool is on a local environment (devstack), expose the LMS to an external domain (Example: `ngrok <https://ngrok.com/>`_, `Cloudflare Tunnel <https://www.cloudflare.com/products/tunnel/>`).
+1. (Optional) If the LTI tool is on a local environment, expose the LMS to an external domain (Example: `ngrok <https://ngrok.com/>`_, `Cloudflare Tunnel <https://www.cloudflare.com/products/tunnel/>`).
 2. Go to LMS Admin > PyLTI 1.3 Tool Config > Lti 1.3 tools.
 3. Create a new LTI 1.3 tool configuration with all your platform details.
 4. Go to your LTI platform and set the login and keyset URL of the LTI tool:

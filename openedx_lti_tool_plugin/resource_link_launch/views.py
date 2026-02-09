@@ -567,7 +567,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         return redirect(
             f'{configuration_helpers().get_value("LEARNING_MICROFRONTEND_URL", settings.LEARNING_MICROFRONTEND_URL)}'
-            f'/course/{course_id}'
+            f'/course/{course_id}',
         )
 
     @staticmethod

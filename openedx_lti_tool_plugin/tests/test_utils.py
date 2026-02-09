@@ -82,7 +82,7 @@ class TestGetIdentityClaims(TestCase):
                 get_client_id_mock.return_value,
                 self.launch_data['sub'],
                 get_pii_from_claims_mock.return_value,
-            )
+            ),
         )
         get_client_id_mock.assert_called_once_with(self.launch_data['aud'], self.launch_data['azp'])
         save_pii_data_mock.is_enabled.assert_called_once_with()
@@ -104,7 +104,7 @@ class TestGetIdentityClaims(TestCase):
                 get_client_id_mock.return_value,
                 self.launch_data['sub'],
                 {},
-            )
+            ),
         )
         get_client_id_mock.assert_called_once_with(self.launch_data['aud'], self.launch_data['azp'])
         save_pii_data_mock.is_enabled.assert_called_once_with()

@@ -1,0 +1,159 @@
+# Python project configuration file.
+# https://packaging.python.org/en/latest/specifications/pyproject-toml
+
+# ----------
+# Packaging.
+# ----------
+[build-system]
+requires = ['setuptools', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'openedx-lti-tool-plugin'
+description = 'Support for LTI tool launches and services.'
+readme = { file = "README.rst", content-type = 'text/x-rst' }
+authors = [{ name = 'eduNEXT', email = 'contact@edunext.co' }]
+keywords = ['Python', 'Django', 'Open edX', 'Plugin', 'LTI']
+classifiers = [
+    'Development Status :: 5 - Production/Stable',
+    'Framework :: Django :: 5.2',
+    'Intended Audience :: Developers',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+]
+requires-python = '>=3.11'
+dynamic = ['version', 'dependencies']
+
+[project.urls]
+Repository = 'https://github.com/Pearson-Advance/openedx-lti-tool-plugin'
+Issues = 'https://github.com/Pearson-Advance/openedx-lti-tool-plugin/issues'
+Changelog = 'https://github.com/Pearson-Advance/openedx-lti-tool-plugin/blob/master/CHANGELOG.rst'
+
+[tool.setuptools.dynamic]
+version = { attr = "openedx_lti_tool_plugin.__version__" }
+
+[project.entry-points."lms.djangoapp"]
+openedx_lti_tool_plugin = "openedx_lti_tool_plugin.apps:OpenedXLtiToolPluginConfig"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["test_settings"]
+
+[tool.setuptools.packages.find]
+include = ["openedx_lti_tool_plugin*"]
+
+# -----------
+# Versioning.
+# -----------
+[tool.bumpversion]
+current_version = "0.3.1"
+commit = true
+tag = true
+
+[[tool.bumpversion.files]]
+filename = "openedx_lti_tool_plugin/__init__.py"
+
+
+# --------
+# Testing.
+# --------
+[tool.pytest.ini_options]
+addopts = '--ds=test_settings --reuse-db'
+python_files = ['test_*.py']
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py{311,312}-django52, quality
+skip_missing_interpreters = true
+
+[testenv]
+deps =
+    setuptools
+    wheel
+    Django>=5.2,<5.3
+    -r {toxinidir}/requirements/test.txt
+setenv =
+    DJANGO_SETTINGS_MODULE = test_settings
+    PIP_NO_BUILD_ISOLATION = 1
+    PIP_DISABLE_PIP_VERSION_CHECK = 1
+commands =
+    python manage.py check
+    pytest {posargs:openedx_lti_tool_plugin}
+
+[testenv:quality]
+deps =
+    setuptools
+    wheel
+    -r {toxinidir}/requirements/quality.txt
+setenv =
+    DJANGO_SETTINGS_MODULE = test_settings
+    PIP_NO_BUILD_ISOLATION = 1
+    PIP_DISABLE_PIP_VERSION_CHECK = 1
+allowlist_externals =
+    make
+commands =
+    pylint manage.py openedx_lti_tool_plugin
+    pydocstyle manage.py openedx_lti_tool_plugin
+    isort --check-only --diff manage.py openedx_lti_tool_plugin
+    make selfcheck
+"""
+
+
+# --------
+# Quality.
+# --------
+[tool.pylint.MASTER]
+py-version = '3.11.0'
+ignore = ['migrations']
+
+[tool.pylint.FORMAT]
+max-line-length = 120
+
+[tool.pylint.DESIGN]
+max-parents = 13
+
+[tool.pylint.IMPORTS]
+known-third-party = ['openedx_lti_tool_plugin']
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+'duplicate-code',
+'too-few-public-methods',
+'too-many-arguments',
+'too-many-public-methods',
+'too-many-instance-attributes',
+'invalid-name',
+'too-many-positional-arguments',
+'too-many-locals',
+'protected-access',
+'no-member',
+'unused-argument',
+'too-many-lines',
+]
+
+[tool.pydocstyle]
+convention = "google"
+add-ignore = [
+'D212',
+]
+match-dir = '^(?!migrations$)(?!tests$).*'
+
+[tool.isort]
+profile = 'django'
+line_length = 120
+known_first_party = ['openedx_lti_tool_plugin']
+skip_glob = ['**/migrations/*.py']
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+
+[[tool.mypy.overrides]]
+module = []
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = 'test_settings'

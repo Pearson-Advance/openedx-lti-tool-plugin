@@ -7,10 +7,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
-from .common import *  # pylint: disable=unused-wildcard-import,wildcard-import
+from openedx_lti_tool_plugin.settings.common import *  # pylint: disable=unused-wildcard-import,wildcard-import
 
-# Django settings
-DEBUG = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',

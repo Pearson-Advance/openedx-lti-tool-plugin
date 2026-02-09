@@ -65,7 +65,7 @@ class LtiToolConfigurationAdmin(admin.ModelAdmin):
     search_fields = ['id', 'lti_tool__title', 'allowed_course_ids']
     list_filter = ('user_provisioning_mode',)
 
-    @admin.display(description="LTI Tool")
+    @admin.display(description='LTI Tool')
     def lti_tool_title(self, obj: LtiToolConfiguration) -> str:
         """LTI Tool Title admin list_display method.
 

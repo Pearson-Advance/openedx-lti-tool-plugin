@@ -217,7 +217,7 @@ class LtiProfile(models.Model):
 
         """
         return User.objects.filter(
-            Q(email=email) | Q(username=username)
+            Q(email=email) | Q(username=username),
         ).exclude(
             email=email,
             username=username,
@@ -343,7 +343,8 @@ class LtiToolConfiguration(models.Model):
         choices=UserProvisioningMode.choices,
         default=UserProvisioningMode.NEW_ACCOUNTS_ONLY,
         verbose_name=_('User Provisioning Mode'),
-        help_text=mark_safe(_("""
+        help_text=mark_safe(
+            _("""
         <p>Determines how user accounts are provisioned during an LTI launch:</p>
         <ul>
           <li><strong>New accounts only (automatic)</strong> -
@@ -356,7 +357,8 @@ class LtiToolConfiguration(models.Model):
             Only existing accounts may be used. Without an existing account,
             users cannot access shared resources.</li>
         </ul>
-        """)),
+        """),
+        ),
     )
 
     class Meta:
@@ -491,7 +493,7 @@ class CourseContextQuerySet(models.QuerySet):
                     course_context.pk
                     for course_context in self
                     if course_context.org in site_orgs
-                ]
+                ],
             )
 
         return self

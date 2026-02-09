@@ -867,7 +867,7 @@ class TestResourceLinkLaunchViewEnroll(ResourceLinkLaunchViewBaseTestCase):
     def test_with_course_enrollment_exception(
         self,
         gettext_mock: MagicMock,
-        course_enrollment_mock: MagicMock
+        course_enrollment_mock: MagicMock,
     ):
         """Test with CourseEnrollmentException."""
         course_enrollment_mock.side_effect = course_enrollment_exception()
@@ -943,12 +943,12 @@ class TestResourceLinkLaunchViewGetCourseLaunchResponse(ResourceLinkLaunchViewBa
         self.assertEqual(self.view_class.get_course_launch_response(COURSE_ID), redirect_mock.return_value)
         allow_complete_course_launch_mock.is_enabled.assert_called_once_with()
         configuration_helpers().get_value.assert_called_once_with(
-            "LEARNING_MICROFRONTEND_URL",
+            'LEARNING_MICROFRONTEND_URL',
             settings.LEARNING_MICROFRONTEND_URL,
         )
         redirect_mock.assert_called_once_with(
             f'{configuration_helpers().get_value()}'
-            f'/course/{COURSE_ID}'
+            f'/course/{COURSE_ID}',
         )
 
     @patch(f'{MODULE_PATH}._')
