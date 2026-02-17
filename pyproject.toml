@@ -35,7 +35,7 @@ Changelog = 'https://github.com/Pearson-Advance/openedx-lti-tool-plugin/blob/mas
 version = { attr = "openedx_lti_tool_plugin.__version__" }
 
 [project.entry-points."lms.djangoapp"]
-openedx_lti_tool_plugin = "openedx_lti_tool_plugin.apps:OpenedXLtiToolPluginConfig"
+openedx_lti_tool_plugin = "openedx_lti_tool_plugin.apps:OpenEdxLtiToolPluginConfig"
 
 [tool.setuptools]
 include-package-data = true
