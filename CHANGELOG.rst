@@ -16,6 +16,16 @@ Unreleased
 
 *
 
+0.4.0 - 2026-04-23
+********************
+
+Changed
+=======
+
+- Fix CourseEnrollment.enroll call.
+- Fix project entry point in pyproject.toml.
+- Update plugin to work with edx-platform ulmo version.
+
 0.3.1 - 2025-05-20
 ********************
 
@@ -288,7 +298,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.3.1...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.0
 [0.2.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.2
