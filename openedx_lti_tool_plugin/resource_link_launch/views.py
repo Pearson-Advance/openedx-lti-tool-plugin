@@ -151,7 +151,7 @@ class ResourceLinkLaunchView(LTIToolView):
             user = self.authenticate_and_login(request, iss, aud, sub)
 
             # Enroll User.
-            self.enroll(request, user, course_key)
+            self.enroll(user, course_key)
 
             # Get resource link response.
             response = self.get_launch_response(
@@ -492,11 +492,10 @@ class ResourceLinkLaunchView(LTIToolView):
         return user
 
     @staticmethod
-    def enroll(request: HttpRequest, user: UserT, course_key: str):
+    def enroll(user: UserT, course_key: str):
         """Enroll User to Course.
 
         Args:
-            request: HTTPRequest object.
             user: User instance.
             course_key: Course key string.
 
@@ -510,7 +509,6 @@ class ResourceLinkLaunchView(LTIToolView):
                     user=user,
                     course_key=course_key,
                     check_access=True,
-                    request=request,
                 )
         except course_enrollment_exception() as exc:
             raise ResourceLinkException(_(f'Course enrollment failed: {exc}')) from exc
