@@ -146,7 +146,6 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         render_login_prompt_mock.assert_not_called()
         authenticate_and_login_mock.assert_called_once_with(self.request, ISS, AUD, SUB)
         enroll_mock.assert_called_once_with(
-            self.request,
             authenticate_and_login_mock(),
             self.course_key,
         )
@@ -846,7 +845,7 @@ class TestResourceLinkLaunchViewEnroll(ResourceLinkLaunchViewBaseTestCase):
 
     def test_with_enrollment(self, course_enrollment_mock: MagicMock):
         """Test with enrollment."""
-        self.assertEqual(self.view_class.enroll(None, self.user, COURSE_KEY), None)
+        self.assertEqual(self.view_class.enroll(self.user, COURSE_KEY), None)
         course_enrollment_mock().get_enrollment.assert_called_once_with(self.user, COURSE_KEY)
         course_enrollment_mock().enroll.assert_not_called()
 
@@ -854,13 +853,12 @@ class TestResourceLinkLaunchViewEnroll(ResourceLinkLaunchViewBaseTestCase):
         """Test without enrollment."""
         course_enrollment_mock().get_enrollment.return_value = None
 
-        self.assertEqual(self.view_class.enroll(None, self.user, COURSE_KEY), None)
+        self.assertEqual(self.view_class.enroll(self.user, COURSE_KEY), None)
         course_enrollment_mock().get_enrollment.assert_called_once_with(self.user, COURSE_KEY)
         course_enrollment_mock().enroll.assert_called_once_with(
             user=self.user,
             course_key=COURSE_KEY,
             check_access=True,
-            request=None,
         )
 
     @patch(f'{MODULE_PATH}._')
@@ -873,7 +871,7 @@ class TestResourceLinkLaunchViewEnroll(ResourceLinkLaunchViewBaseTestCase):
         course_enrollment_mock.side_effect = course_enrollment_exception()
 
         with self.assertRaises(ResourceLinkException):
-            self.view_class.enroll(None, self.user, COURSE_KEY)
+            self.view_class.enroll(self.user, COURSE_KEY)
 
         gettext_mock.assert_called_once_with('Course enrollment failed: ')
 
