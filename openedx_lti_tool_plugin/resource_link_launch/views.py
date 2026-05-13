@@ -234,8 +234,9 @@ class ResourceLinkLaunchView(LTIToolView):
             pass
 
         try:
-            usage_key = UsageKey.from_string(resource_id)
-            course_key = usage_key.course_key
+            _usage_key = UsageKey.from_string(resource_id)
+            course_key = _usage_key.course_key
+            usage_key = _usage_key.map_into_course(course_key)
         except InvalidKeyError:
             pass
 
@@ -256,7 +257,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Raises:
             ResourceLinkException: If course_key is not found or
-                if usage_key.block_type is chapter, sequential or course.
+                if usage_key.block_type is chapter or course.
 
         """
         if not course_key:
@@ -266,7 +267,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         if (
             usage_key
-            and usage_key.block_type in ['chapter', 'sequential', 'course']
+            and usage_key.block_type in ['chapter', 'course']
         ):
             raise ResourceLinkException(
                 _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),
@@ -540,7 +541,7 @@ class ResourceLinkLaunchView(LTIToolView):
         response = None
 
         if usage_key:
-            response = redirect('render_xblock', str(usage_key.course_key))
+            response = redirect('render_xblock', str(usage_key))
         else:
             response = self.get_course_launch_response(str(course_key))
 
