@@ -16,6 +16,14 @@ Unreleased
 
 *
 
+0.4.1 - 2026-06-18
+********************
+
+Changed
+=======
+
+- Fixed rendering of usage keys.
+
 0.4.0 - 2026-04-23
 ********************
 
@@ -298,7 +306,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.0
