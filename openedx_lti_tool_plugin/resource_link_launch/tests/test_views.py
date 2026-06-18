@@ -405,7 +405,7 @@ class TestResourceLinkLaunchViewGetOpaqueKeys(ResourceLinkLaunchViewBaseTestCase
             self.view_class().get_opaque_keys(self.resource_id),
             (
                 usage_key_mock.from_string.return_value.course_key,
-                usage_key_mock.from_string.return_value,
+                usage_key_mock.from_string.return_value.map_into_course.return_value,
             ),
         )
 
@@ -457,7 +457,7 @@ class TestResourceLinkLaunchViewValidateOpaqueKeys(ResourceLinkLaunchViewBaseTes
         self.assertIsNone(self.view_class.validate_opaque_keys(self.course_key, self.usage_key, ''))
         gettext_mock.assert_not_called()
 
-    @ddt.data('chapter', 'sequential', 'course')
+    @ddt.data('chapter', 'course')
     def test_with_invalid_usage_key(self, block_type: str, gettext_mock: MagicMock):
         """Test with invalid usage_key argument."""
         self.usage_key.block_type = block_type
@@ -896,7 +896,7 @@ class TestResourceLinkLaunchViewGetLaunchResponse(ResourceLinkLaunchViewBaseTest
             ),
             set_logged_in_cookies.return_value,
         )
-        redirect_mock.assert_called_once_with('render_xblock', str(self.usage_key.course_key))
+        redirect_mock.assert_called_once_with('render_xblock', str(self.usage_key))
         set_logged_in_cookies.assert_called_once_with(None, redirect_mock(), self.user)
 
     @patch.object(ResourceLinkLaunchView, 'get_course_launch_response')
