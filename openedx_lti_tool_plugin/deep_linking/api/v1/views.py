@@ -19,10 +19,6 @@ from openedx_lti_tool_plugin.utils import get_identity_claims
 
 CUSTOM_CLAIM = 'https://purl.imsglobal.org/spec/lti/claim/custom'
 
-# Block categories the instructor may embed as their own LTI resource link.
-# Chapters (sections) stay as navigation-only containers.
-EMBEDDABLE_BLOCK_TYPES = ('sequential', 'vertical', 'problem', 'html', 'video')
-
 
 def scoped_course_queryset(launch_data: dict) -> QuerySet:
     """Return the CourseContext QuerySet a launch may pick from.
@@ -59,8 +55,8 @@ def block_node(block, launch_url: str) -> dict:
 
     Returns:
         A nested dict carrying both display data and the LTI content-item fields.
-        Selectable nodes (see EMBEDDABLE_BLOCK_TYPES) can be chosen in the picker;
-        containers are navigation-only. ``_children`` is Tabulator's tree child field.
+        Every level is selectable (section, subsection, unit, component); selecting a
+        parent embeds everything beneath it. ``_children`` holds the nested child nodes.
 
     """
     usage_id = str(block.location)
@@ -70,7 +66,7 @@ def block_node(block, launch_url: str) -> dict:
         'id': usage_id,
         'title': block.display_name_with_default or category,
         'category': category,
-        'selectable': category in EMBEDDABLE_BLOCK_TYPES,
+        'selectable': True,
         # LTI content-item fields (consumed by DeepLinkingForm on submit).
         'type': 'ltiResourceLink',
         'url': launch_url,
@@ -80,11 +76,12 @@ def block_node(block, launch_url: str) -> dict:
 
 
 def get_course_block_tree(course_key: CourseKey, launch_url: str) -> list:
-    """Return the course outline as a single selectable course root with nested blocks.
+    """Return the course outline as a selectable root with nested, selectable blocks.
 
-    The root node is the course itself (selectable — embeds the whole course), and its
-    children are the chapters -> sequentials -> units -> components. So the instructor can
-    either pick the whole course or expand and pick specific units/problems.
+    The root node is the course, and its children are the chapters -> sequentials ->
+    units -> components. Every level is selectable; selecting a parent embeds everything
+    beneath it. (A course-level launch redirects to the Learning MFE, so a whole-course
+    selection is best opened in a new window rather than an inline iframe.)
 
     Args:
         course_key: CourseKey of the course to traverse.

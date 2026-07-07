@@ -1,0 +1,219 @@
+/* Deep Linking content picker styles. Loaded by
+   templates/openedx_lti_tool_plugin/deep_linking/form.html via {% static %}. */
+
+:root {
+  --dlp-blue: #3b49df;
+  --dlp-blue-text: #2b39c4;
+  --dlp-sel-direct: #dbe3fb;
+  --dlp-sel-covered: #eef2fe;
+  --dlp-name: #1f2a44;
+  --dlp-muted: #6b7280;
+  --dlp-badge-bg: #f2f2f5;
+  --dlp-border: #e6e8ee;
+  --dlp-hover: #f7f8fa;
+}
+
+.dlp-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px 20px 96px;
+  color: var(--dlp-name);
+}
+
+.dlp-back {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--dlp-blue);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+.dlp-back:hover { text-decoration: underline; }
+
+.dlp-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--dlp-name);
+  margin: 0 0 8px;
+}
+.dlp-subtitle {
+  font-size: 15px;
+  color: var(--dlp-muted);
+  margin: 0 0 16px;
+  line-height: 1.4;
+}
+.dlp-divider {
+  border: 0;
+  border-top: 1px solid var(--dlp-border);
+  margin: 0 0 8px;
+}
+
+/* Course list (step 1) */
+.dlp-course-row {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 8px 6px;
+  font-size: 17px;
+  color: var(--dlp-name);
+  border-bottom: 1px solid var(--dlp-border);
+  cursor: pointer;
+}
+.dlp-course-row:hover { background: var(--dlp-hover); }
+.dlp-course-empty {
+  padding: 24px 6px;
+  color: var(--dlp-muted);
+  font-size: 15px;
+}
+
+/* Tree (step 2) */
+.dlp-tree { margin-bottom: 8px; }
+.dlp-children.collapsed { display: none; }
+
+.dlp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.dlp-row:hover { background: var(--dlp-hover); }
+.dlp-row.sel-covered { background: var(--dlp-sel-covered); }
+.dlp-row.sel-covered:hover { background: var(--dlp-sel-covered); }
+.dlp-row.sel-direct { background: var(--dlp-sel-direct); }
+.dlp-row.sel-direct:hover { background: var(--dlp-sel-direct); }
+.dlp-row.sel-direct .dlp-name,
+.dlp-row.sel-covered .dlp-name { color: var(--dlp-blue-text); font-weight: 600; }
+.dlp-row.sel-direct .dlp-icon,
+.dlp-row.sel-covered .dlp-icon { color: var(--dlp-blue-text); }
+.dlp-row.sel-direct .dlp-badge,
+.dlp-row.sel-covered .dlp-badge { background: transparent; }
+
+.dlp-chevron {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dlp-muted);
+  transition: transform 0.12s ease;
+}
+.dlp-chevron.open { transform: rotate(90deg); }
+
+.dlp-check {
+  width: 20px;
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Custom checkbox so a checked box is always solid blue and consistent
+   across browsers. Checkboxes stay interactive at every level. */
+.dlp-check input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid #c2c7d6;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  position: relative;
+}
+.dlp-check input:checked {
+  background: var(--dlp-blue);
+  border-color: var(--dlp-blue);
+}
+.dlp-check input:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.dlp-check input:disabled { cursor: default; }
+
+.dlp-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa0b0;
+}
+
+.dlp-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--dlp-name);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dlp-included {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--dlp-muted);
+  white-space: nowrap;
+}
+
+.dlp-badge {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--dlp-muted);
+  background: var(--dlp-badge-bg);
+  padding: 3px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Footer */
+.dlp-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 4px;
+  margin-top: 8px;
+  background: #fff;
+  border-top: 1px solid var(--dlp-border);
+}
+.dlp-count { font-size: 14px; color: var(--dlp-muted); }
+.dlp-actions { display: flex; gap: 12px; }
+.dlp-btn {
+  font-size: 15px;
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.dlp-btn-secondary {
+  background: #fff;
+  border-color: #d1d5db;
+  color: var(--dlp-name);
+}
+.dlp-btn-secondary:hover { background: var(--dlp-hover); }
+.dlp-btn-primary {
+  background: var(--dlp-blue);
+  color: #fff;
+}
+.dlp-btn-primary:hover { background: var(--dlp-blue-text); }
+.dlp-btn-primary:disabled { background: #b9c0ec; cursor: not-allowed; }

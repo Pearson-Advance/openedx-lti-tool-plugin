@@ -468,16 +468,17 @@ class TestResourceLinkLaunchViewValidateOpaqueKeys(ResourceLinkLaunchViewBaseTes
         self.assertIsNone(self.view_class.validate_opaque_keys(self.course_key, self.usage_key, ''))
         gettext_mock.assert_not_called()
 
-    def test_with_sequential_usage_key(self, gettext_mock: MagicMock):
-        """Test that sequential (subsection) block type is accepted.
+    @ddt.data('sequential', 'chapter', 'vertical', 'problem')
+    def test_with_renderable_usage_key(self, block_type: str, gettext_mock: MagicMock):
+        """Test that section/subsection/unit/component block types are accepted.
 
-        Subsections are renderable via render_xblock and must not be rejected.
+        These all render via render_xblock and must not be rejected.
         """
-        self.usage_key.block_type = 'sequential'
+        self.usage_key.block_type = block_type
         self.assertIsNone(self.view_class.validate_opaque_keys(self.course_key, self.usage_key, ''))
         gettext_mock.assert_not_called()
 
-    @ddt.data('chapter', 'course')
+    @ddt.data('course')
     def test_with_invalid_usage_key(self, block_type: str, gettext_mock: MagicMock):
         """Test with invalid usage_key argument."""
         self.usage_key.block_type = block_type
