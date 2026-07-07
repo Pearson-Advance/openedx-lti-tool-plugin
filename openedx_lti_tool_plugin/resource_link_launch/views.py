@@ -260,7 +260,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Raises:
             ResourceLinkException: If course_key is not found or
-                if usage_key.block_type is chapter or course.
+                if usage_key.block_type is course.
 
         """
         if not course_key:
@@ -268,9 +268,12 @@ class ResourceLinkLaunchView(LTIToolView):
                 _(f'CourseKey not found from resource ID: {resource_id}'),
             )
 
+        # `course` is never a UsageKey (a whole-course launch uses the CourseKey path), so
+        # this is a defensive guard only. Sections (`chapter`), subsections, units and
+        # components are all launchable and render inline via render_xblock.
         if (
             usage_key
-            and usage_key.block_type in ['chapter', 'course']
+            and usage_key.block_type in ['course']
         ):
             raise ResourceLinkException(
                 _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),

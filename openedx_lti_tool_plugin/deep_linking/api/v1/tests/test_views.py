@@ -137,7 +137,7 @@ class TestGetCourseBlockTree(TestCase):
 
     @patch(f'{MODULE_PATH}.modulestore')
     def test_builds_nested_tree(self, modulestore_mock: MagicMock):
-        """Returns a nested outline marking only embeddable nodes selectable."""
+        """Returns a nested outline where every level is selectable."""
         problem = _fake_block('problem', 'block@problem', 'Problem 1', [])
         unit = _fake_block('vertical', 'block@vertical', 'Unit 1', [problem])
         chapter = _fake_block('chapter', 'block@chapter', 'Section 1', [unit])
@@ -147,16 +147,15 @@ class TestGetCourseBlockTree(TestCase):
 
         tree = get_course_block_tree('course-key', 'http://launch')
 
-        # root: the course itself, selectable (embeds the whole course)
+        # root: the course itself, now selectable (embeds the whole course)
         self.assertEqual(len(tree), 1)
         course_node = tree[0]
         self.assertEqual(course_node['category'], 'course')
         self.assertTrue(course_node['selectable'])
-        self.assertEqual(course_node['custom'], {'resourceId': 'course-key'})
-        # chapter: container, not selectable
+        # chapter: selectable (embedding a section embeds everything beneath it)
         chapter_node = course_node['_children'][0]
         self.assertEqual(chapter_node['category'], 'chapter')
-        self.assertFalse(chapter_node['selectable'])
+        self.assertTrue(chapter_node['selectable'])
         # unit: selectable, carries content-item fields
         unit_node = chapter_node['_children'][0]
         self.assertTrue(unit_node['selectable'])

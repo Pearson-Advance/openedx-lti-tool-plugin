@@ -1,55 +1,82 @@
 {% extends 'openedx_lti_tool_plugin/base.html' %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block title %}{% translate 'Deep Linking UI' %}{% endblock %}
 
 {% block head %}
 {{ block.super }}
-<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/css/tabulator.min.css' integrity='sha512-RYFH4FFdhD/FdA+OVEbFVqd5ifR+Dnx2M7eWcmkcMexlIoxNgm89ieeVyHYb8xChuYBtbrasMTlo02cLnidjtQ==' crossorigin='anonymous' referrerpolicy='no-referrer' />
-<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/css/tabulator_bootstrap4.min.css' integrity='sha512-M8fQtCoI4fno1+6crM7PKDbguzHFchIAbYpaATMNkZcL+e9sGOM+wMVF9WDEXbnPV9qrvk5HUY7wcSi9oFfJaA==' crossorigin='anonymous' referrerpolicy='no-referrer' />
+<link rel='stylesheet' type='text/css' href="{% static 'openedx_lti_tool_plugin/deep_linking/picker.css' %}">
 {% endblock %}
 
 {% block body_content %}
 {{ block.super }}
-<div class='container my-4'>
-  <div class='row'>
-    <div class='col'>
+<div class='dlp-wrap'>
 
-      {# Step 1: pick a course #}
-      <div id='coursesView'>
-        <h5 class='mb-3'>{% translate 'Select a course' %}</h5>
-        <p class='text-muted'>{% translate 'Click a course to browse its units and components.' %}</p>
-        <div id='coursesTable' class='mb-4'></div>
-      </div>
-
-      {# Step 2: pick unit(s)/component(s) within the chosen course #}
-      <div id='blocksView' style='display:none'>
-        <button type='button' id='backToCourses' class='btn btn-link px-0 mb-2'>&larr; {% translate 'Back to courses' %}</button>
-        <h5 class='mb-3'>{% translate 'Select content from' %} <span id='selectedCourseTitle'></span></h5>
-        <p class='text-muted'>{% translate 'Tick the units or components you want to embed. Sections and subsections are for navigation only.' %}</p>
-        <form
-        id='deepLinkingForm'
-        action='{% url "openedx_lti_tool_plugin:1.3:deep-linking:form" launch_id=launch_id %}'
-        method='post'>
-          {% csrf_token %}
-          <div id='blocksTable' class='mb-4'></div>
-          <input type='submit' class='btn btn-primary' value='{% translate "Add selected" %}'>
-        </form>
-      </div>
-
-    </div>
+  {# Step 1: pick a course (only when the launch is not scoped to one course) #}
+  <div id='coursesView'>
+    <h1 class='dlp-title'>{% translate 'Select a course' %}</h1>
+    <p class='dlp-subtitle'>{% translate 'Click a course to browse its units and components.' %}</p>
+    <hr class='dlp-divider'>
+    <div id='coursesList'></div>
   </div>
+
+  {# Step 2: pick section(s)/unit(s)/component(s) within the chosen course #}
+  <div id='blocksView' style='display:none'>
+    <button type='button' id='backToCourses' class='dlp-back'>&larr; {% translate 'Back to courses' %}</button>
+    <h1 class='dlp-title'>{% translate 'Select content from' %} <span id='selectedCourseTitle'></span></h1>
+    <p class='dlp-subtitle'>{% translate 'Select any course, section, subsection, unit, or component to embed. Selecting a parent embeds all the content beneath it.' %}</p>
+    <hr class='dlp-divider'>
+    <form
+      id='deepLinkingForm'
+      action='{% url "openedx_lti_tool_plugin:1.3:deep-linking:form" launch_id=launch_id %}'
+      method='post'>
+      {% csrf_token %}
+      <div id='blocksTree' class='dlp-tree'></div>
+      <div class='dlp-footer'>
+        <span id='selCount' class='dlp-count'></span>
+        <div class='dlp-actions'>
+          <button type='button' id='cancelBtn' class='dlp-btn dlp-btn-secondary'>{% translate 'Cancel' %}</button>
+          <button type='submit' id='submitBtn' class='dlp-btn dlp-btn-primary' disabled>{% translate 'Use selected content' %}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
 </div>
 {% endblock %}
 
 {% block body_js %}
 {{ block.super }}
-<script src='https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.2.5/js/tabulator.min.js' integrity='sha512-orG5sHJgUiyGjeUBBK56+piLmrCEP7r5Tz9efhJ/C7F1Hdi8O33gQxqZThRb/PSAg9T5seRewR2pw5lTaZPTMQ==' crossorigin='anonymous' referrerpolicy='no-referrer'></script>
 <script>
-  const paginationSize = 25;
   const courseListUrl = '{% url "openedx_lti_tool_plugin:1.3:deep-linking:api:v1:course-content-item-list" launch_id=launch_id %}';
   // When the launch resolves to a single course, the picker is scoped to it.
   const scopedCourseId = '{{ course_id|escapejs }}';
+  const itemsWord = '{% translate "items selected" %}';
+
+  // Human-readable type labels for the right-aligned badge.
+  const BLOCK_LABELS = {
+    course: '{% translate "Course" %}',
+    chapter: '{% translate "Chapter" %}',
+    sequential: '{% translate "Subsection" %}',
+    vertical: '{% translate "Unit" %}',
+    html: '{% translate "HTML" %}',
+    problem: '{% translate "Problem" %}',
+    video: '{% translate "Video" %}',
+  };
+
+  // Inline SVG icons (inherit currentColor, so they turn blue when a row is selected).
+  const CHEVRON_SVG =
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
+  const ICONS = {
+    course: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 4l8 3.5-8 3.5-8-3.5 8-3.5z"/><path d="M4 9v3.5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5V9"/></svg>',
+    chapter: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 3l6 3-6 3-6-3 6-3z"/><path d="M4 10l6 3 6-3"/></svg>',
+    sequential: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 6a1 1 0 011-1h3.5l1.5 1.5H16a1 1 0 011 1V15a1 1 0 01-1 1H4a1 1 0 01-1-1V6z"/></svg>',
+    vertical: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3.5" y="3.5" width="9" height="11" rx="1.5"/><path d="M7 6.5h8.5a1 1 0 011 1V16"/></svg>',
+    html: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6 3h5l3.5 3.5V16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M11 3v4h3.5"/></svg>',
+    problem: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12M4 10h12M4 14h7"/></svg>',
+    video: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M9 8l3.5 2L9 12V8z" fill="currentColor" stroke="none"/></svg>',
+    _default: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6 3h5l3.5 3.5V16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>',
+  };
 
   // Per-course blocks endpoint: .../courses/<course_id>/blocks
   function blocksUrl(courseId) {
@@ -61,57 +88,211 @@
     document.getElementById('blocksView').style.display = (name === 'blocks') ? '' : 'none';
   }
 
-  // Step 1 — courses table (paginated). Only used when the launch is not course-scoped.
-  if (!scopedCourseId) {
-    const coursesTable = new Tabulator('#coursesTable', {
-      ajaxURL: courseListUrl,
-      ajaxResponse: function(url, params, response) {
-        return Object.assign({}, {
-          last_page: Math.floor((response.count + paginationSize - 1) / paginationSize),
-          data: response.results,
-        });
-      },
-      dataSendParams: {'size': 'page_size'},
-      columns: [
-        {title: '{% translate "Course" %}', field: 'title', widthGrow: 1},
-      ],
-      progressiveLoad: 'load',
-      paginationSize: paginationSize,
-      layout: 'fitDataStretch',
-    });
+  // ---- Custom tree state -------------------------------------------------
+  let treeRoots = [];         // top-level nodes rendered (the course's children)
+  const nodeById = {};        // id -> node
+  const parentById = {};      // id -> parent node (or null)
+  const selected = new Set(); // ids the user explicitly checked (the embed roots)
+  const collapsed = new Set();// ids whose children are collapsed
 
-    coursesTable.on('rowClick', function(e, row) {
-      const data = row.getData();
-      loadBlocks(data.custom.resourceId, data.title);
+  function indexTree(nodes, parent) {
+    nodes.forEach(function(n) {
+      nodeById[n.id] = n;
+      parentById[n.id] = parent;
+      if (n._children) { indexTree(n._children, n); }
     });
   }
 
-  // Step 2 — nested block outline (chapter -> sequential -> unit -> component).
-  const blocksTable = new Tabulator('#blocksTable', {
-    dataTree: true,
-    dataTreeChildField: '_children',
-    dataTreeStartExpanded: true,
-    layout: 'fitColumns',
-    columns: [
-      {title: '{% translate "Name" %}', field: 'title', widthGrow: 3, responsive: 0},
-      {title: '{% translate "Type" %}', field: 'category', widthGrow: 1, hozAlign: 'center'},
-    ],
-    // Only embeddable nodes (units/components) can be selected; containers cannot.
-    selectableRows: true,
-    selectableRowsCheck: function(row) {
-      return row.getData().selectable;
-    },
-    rowHeader: {
-      formatter: 'rowSelection',
-      titleFormatter: 'rowSelection',
-      headerSort: false,
-      resizable: false,
-      frozen: true,
-      headerHozAlign: 'center',
-      hozAlign: 'center',
-    },
-  });
+  // True when an ancestor is explicitly selected, so this node is already embedded
+  // (shown as "included" — it does not need its own selection).
+  function isCovered(node) {
+    let p = parentById[node.id];
+    while (p) {
+      if (selected.has(p.id)) { return true; }
+      p = parentById[p.id];
+    }
+    return false;
+  }
 
+  function clearAncestors(node) {
+    let p = parentById[node.id];
+    while (p) {
+      selected.delete(p.id);
+      p = parentById[p.id];
+    }
+  }
+
+  function clearDescendants(node) {
+    (node._children || []).forEach(function(c) {
+      selected.delete(c.id);
+      clearDescendants(c);
+    });
+  }
+
+  // Selecting any node makes it the sole selection on its root-to-leaf path:
+  //  - it deselects any selected ancestor (selecting a child/parent clears its parents), and
+  //  - it deselects any selected descendant (so the same content is never embedded twice).
+  // Unrelated selections (neither ancestor nor descendant) are left untouched.
+  function toggle(node, checked) {
+    if (checked) {
+      clearAncestors(node);
+      clearDescendants(node);
+      selected.add(node.id);
+    } else {
+      selected.delete(node.id);
+    }
+    renderTree();
+  }
+
+  function renderNode(node, depth) {
+    const wrap = document.createElement('div');
+    const row = document.createElement('div');
+    row.className = 'dlp-row';
+    row.style.paddingLeft = (14 + depth * 26) + 'px';
+
+    const hasChildren = node._children && node._children.length;
+    const covered = isCovered(node);
+
+    // Chevron (only when the node has children).
+    const chev = document.createElement('span');
+    chev.className = 'dlp-chevron';
+    if (hasChildren) { chev.innerHTML = CHEVRON_SVG; }
+    row.appendChild(chev);
+
+    // Checkbox — every selectable node keeps an always-interactive checkbox, so a
+    // covered child can be clicked to select itself (which deselects its parent).
+    const checkSlot = document.createElement('span');
+    checkSlot.className = 'dlp-check';
+    if (node.selectable) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = selected.has(node.id);
+      cb.addEventListener('click', function(e) { e.stopPropagation(); });
+      cb.addEventListener('change', function() { toggle(node, cb.checked); });
+      checkSlot.appendChild(cb);
+    }
+    row.appendChild(checkSlot);
+
+    // Type icon.
+    const icon = document.createElement('span');
+    icon.className = 'dlp-icon';
+    icon.innerHTML = ICONS[node.category] || ICONS._default;
+    row.appendChild(icon);
+
+    // Name.
+    const name = document.createElement('span');
+    name.className = 'dlp-name';
+    name.textContent = node.title;
+    name.title = node.title;
+    row.appendChild(name);
+
+    // "Included" hint for a node covered by a selected ancestor.
+    if (covered && !selected.has(node.id)) {
+      const inc = document.createElement('span');
+      inc.className = 'dlp-included';
+      inc.textContent = '{% translate "Included" %}';
+      row.appendChild(inc);
+    }
+
+    // Type badge.
+    const badge = document.createElement('span');
+    badge.className = 'dlp-badge';
+    badge.textContent = BLOCK_LABELS[node.category] || node.category;
+    row.appendChild(badge);
+
+    if (selected.has(node.id)) { row.classList.add('sel-direct'); }
+    else if (covered) { row.classList.add('sel-covered'); }
+
+    wrap.appendChild(row);
+
+    if (hasChildren) {
+      const isCollapsed = collapsed.has(node.id);
+      const childBox = document.createElement('div');
+      childBox.className = 'dlp-children' + (isCollapsed ? ' collapsed' : '');
+      if (!isCollapsed) { chev.classList.add('open'); }
+      node._children.forEach(function(c) { childBox.appendChild(renderNode(c, depth + 1)); });
+      wrap.appendChild(childBox);
+
+      const toggleExpand = function() {
+        if (collapsed.has(node.id)) { collapsed.delete(node.id); }
+        else { collapsed.add(node.id); }
+        childBox.classList.toggle('collapsed');
+        chev.classList.toggle('open');
+      };
+      chev.addEventListener('click', function(e) { e.stopPropagation(); toggleExpand(); });
+      // Clicking the row (but not the checkbox) also expands/collapses.
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('input')) { return; }
+        toggleExpand();
+      });
+    }
+
+    return wrap;
+  }
+
+  function updateFooter() {
+    const n = selected.size;
+    document.getElementById('selCount').textContent = n + ' ' + itemsWord;
+    document.getElementById('submitBtn').disabled = (n === 0);
+  }
+
+  function renderTree() {
+    const container = document.getElementById('blocksTree');
+    container.innerHTML = '';
+    treeRoots.forEach(function(n) { container.appendChild(renderNode(n, 0)); });
+    updateFooter();
+  }
+
+  // ---- Step 1: courses list ----------------------------------------------
+  // Fetch every page of the (DRF-paginated) course list, then render a simple
+  // clickable list. Following `next` keeps all courses available without paging UI.
+  function loadCourses() {
+    const list = document.getElementById('coursesList');
+    const results = [];
+
+    function fetchPage(url) {
+      return fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
+        .then(function(response) {
+          if (!response.ok) { throw new Error('{% translate "Failed to load courses." %}'); }
+          return response.json();
+        })
+        .then(function(data) {
+          Array.prototype.push.apply(results, data.results || []);
+          if (data.next) { return fetchPage(data.next); }
+          return results;
+        });
+    }
+
+    fetchPage(courseListUrl + (courseListUrl.indexOf('?') === -1 ? '?' : '&') + 'page_size=100')
+      .then(function(courses) { renderCourses(courses); })
+      .catch(function(error) { window.alert(error.message); });
+  }
+
+  function renderCourses(courses) {
+    const list = document.getElementById('coursesList');
+    list.innerHTML = '';
+
+    if (!courses.length) {
+      const empty = document.createElement('div');
+      empty.className = 'dlp-course-empty';
+      empty.textContent = '{% translate "No courses are available for this tool." %}';
+      list.appendChild(empty);
+      return;
+    }
+
+    courses.forEach(function(course) {
+      const row = document.createElement('div');
+      row.className = 'dlp-course-row';
+      row.textContent = course.title;
+      row.title = course.title;
+      row.addEventListener('click', function() {
+        loadBlocks(course.custom.resourceId, course.title);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  // ---- Step 2: load + render the block outline ---------------------------
   function loadBlocks(courseId, courseTitle) {
     fetch(blocksUrl(courseId), {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
       .then(function(response) {
@@ -120,7 +301,17 @@
       })
       .then(function(data) {
         document.getElementById('selectedCourseTitle').textContent = courseTitle;
-        blocksTable.setData(data);
+
+        // Render the full outline, including the course root — every level is selectable.
+        treeRoots = data || [];
+
+        Object.keys(nodeById).forEach(function(k) { delete nodeById[k]; });
+        Object.keys(parentById).forEach(function(k) { delete parentById[k]; });
+        selected.clear();
+        collapsed.clear();
+        indexTree(treeRoots, null);
+
+        renderTree();
         showView('blocks');
       })
       .catch(function(error) { window.alert(error.message); });
@@ -130,16 +321,31 @@
     showView('courses');
   });
 
+  document.getElementById('cancelBtn').addEventListener('click', function() {
+    selected.clear();
+    if (scopedCourseId) {
+      renderTree();
+    } else {
+      showView('courses');
+    }
+  });
+
   // Course-scoped launch: skip the course list and load that course's content directly.
   if (scopedCourseId) {
     document.getElementById('backToCourses').style.display = 'none';
     loadBlocks(scopedCourseId, scopedCourseId);
+  } else {
+    loadCourses();
   }
 
-  // On submit, serialize selected nodes into LTI content items.
+  // On submit, serialize the selected (top-most) nodes into LTI content items.
   document.querySelector('#deepLinkingForm').addEventListener('formdata', function(e) {
-    const items = blocksTable.getSelectedData().map(function(d) {
-      return {type: 'ltiResourceLink', url: d.url, title: d.title, custom: d.custom};
+    const items = [];
+    selected.forEach(function(id) {
+      const d = nodeById[id];
+      if (d) {
+        items.push({type: 'ltiResourceLink', url: d.url, title: d.title, custom: d.custom});
+      }
     });
     e.formData.set('content_items', JSON.stringify(items));
   });
