@@ -145,8 +145,7 @@ class TestPublishCourseScore(TestCase):
         )
 
 
-@patch(f'{MODULE_PATH}.send_vertical_score_update')
-@patch(f'{MODULE_PATH}.send_problem_score_update')
+@patch(f'{MODULE_PATH}.send_score_updates')
 class TestUpdateUnitOrProblem(TestCase):
     """Test update_unit_or_problem_score function."""
 
@@ -164,8 +163,7 @@ class TestUpdateUnitOrProblem(TestCase):
         self,
         is_plugin_enabled: MagicMock,
         lti_profile_mock: MagicMock,
-        send_problem_score_update_mock: MagicMock,
-        send_vertical_score_update_mock: MagicMock,
+        send_score_updates_mock: MagicMock,
     ):
         """Test with unit or problem score update."""
         self.assertEqual(
@@ -181,19 +179,16 @@ class TestUpdateUnitOrProblem(TestCase):
         )
         is_plugin_enabled.assert_called_once_with()
         lti_profile_mock.objects.filter.assert_called_once_with(user__id=self.user_id)
-        send_problem_score_update_mock.delay.assert_called_once_with(
-            self.weighted_earned,
-            self.weighted_possible,
+        send_score_updates_mock.delay.assert_called_once_with(
             self.user_id,
+            self.course_id,
             self.usage_id,
         )
-        send_vertical_score_update_mock.delay.assert_called_once_with(self.user_id, self.course_id, self.usage_id)
 
     @override_settings(OLTITP_ENABLE_LTI_TOOL=False)
     def test_with_plugin_disabled(
         self,
-        send_problem_score_update_mock: MagicMock,
-        send_vertical_score_update_mock: MagicMock,
+        send_score_updates_mock: MagicMock,
     ):
         """Test with `OLTITP_ENABLE_LTI_TOOL` setting as False."""
         self.assertEqual(
@@ -207,15 +202,13 @@ class TestUpdateUnitOrProblem(TestCase):
             ),
             None,
         )
-        send_problem_score_update_mock.delay.assert_not_called()
-        send_vertical_score_update_mock.delay.assert_not_called()
+        send_score_updates_mock.delay.assert_not_called()
 
     @patch(f'{MODULE_PATH}.LtiProfile')
     def test_without_lti_profile(
         self,
         lti_profile_mock: MagicMock,
-        send_problem_score_update_mock: MagicMock,
-        send_vertical_score_update_mock: MagicMock,
+        send_score_updates_mock: MagicMock,
     ):
         """Test without existing LtiProfile model instance."""
         lti_profile_mock.objects.filter.return_value = []
@@ -231,5 +224,4 @@ class TestUpdateUnitOrProblem(TestCase):
             ),
             None,
         )
-        send_problem_score_update_mock.delay.assert_not_called()
-        send_vertical_score_update_mock.delay.assert_not_called()
+        send_score_updates_mock.delay.assert_not_called()

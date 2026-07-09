@@ -20,7 +20,7 @@ from openedx_lti_tool_plugin.edxapp_wrapper.core_signals_module import course_gr
 from openedx_lti_tool_plugin.edxapp_wrapper.grades_module import problem_weighted_score_changed
 from openedx_lti_tool_plugin.models import LtiProfile, UserT
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
-from openedx_lti_tool_plugin.resource_link_launch.ags.tasks import send_problem_score_update, send_vertical_score_update
+from openedx_lti_tool_plugin.resource_link_launch.ags.tasks import send_score_updates
 from openedx_lti_tool_plugin.utils import is_plugin_enabled
 
 log = logging.getLogger(__name__)
@@ -84,8 +84,8 @@ def publish_course_score(
 @receiver(problem_weighted_score_changed())
 def update_unit_or_problem_score(
     sender: Any,  # pylint: disable=unused-argument
-    weighted_earned: str,
-    weighted_possible: str,
+    weighted_earned: str,  # pylint: disable=unused-argument
+    weighted_possible: str,  # pylint: disable=unused-argument
     user_id: str,
     course_id: str,
     usage_id: str,
@@ -109,13 +109,7 @@ def update_unit_or_problem_score(
     ):
         return
 
-    send_problem_score_update.delay(
-        weighted_earned,
-        weighted_possible,
-        user_id,
-        usage_id,
-    )
-    send_vertical_score_update.delay(
+    send_score_updates.delay(
         user_id,
         course_id,
         usage_id,

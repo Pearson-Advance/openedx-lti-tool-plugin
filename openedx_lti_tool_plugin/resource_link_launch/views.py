@@ -48,6 +48,7 @@ AGS_SCORE_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/score'
 AGS_LINEITEM_SCOPE = 'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem'
 CUSTOM_CLAIM = 'https://purl.imsglobal.org/spec/lti/claim/custom'
 CONTEXT_CLAIM = 'https://purl.imsglobal.org/spec/lti/claim/context'
+RESOURCE_LINK_CLAIM = 'https://purl.imsglobal.org/spec/lti/claim/resource_link'
 
 
 @method_decorator([csrf_exempt, xframe_options_exempt], name='dispatch')
@@ -170,6 +171,7 @@ class ResourceLinkLaunchView(LTIToolView):
                 claims,
                 lti_profile,
                 resource_id,
+                lti_tool_configuration,
             )
 
             return response
@@ -260,7 +262,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Raises:
             ResourceLinkException: If course_key is not found or
-                if usage_key.block_type is course.
+                if usage_key.block_type is chapter or course.
 
         """
         if not course_key:
@@ -268,12 +270,12 @@ class ResourceLinkLaunchView(LTIToolView):
                 _(f'CourseKey not found from resource ID: {resource_id}'),
             )
 
-        # `course` is never a UsageKey (a whole-course launch uses the CourseKey path), so
-        # this is a defensive guard only. Sections (`chapter`), subsections, units and
-        # components are all launchable and render inline via render_xblock.
+        # Sections (`chapter`) render via render_xblock without working side navigation,
+        # and `course` is never a UsageKey (whole-course launches use the CourseKey path).
+        # Both are rejected; subsections, units and components render fine inline.
         if (
             usage_key
-            and usage_key.block_type in ['course']
+            and usage_key.block_type in ['chapter', 'course']
         ):
             raise ResourceLinkException(
                 _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),
@@ -585,17 +587,21 @@ class ResourceLinkLaunchView(LTIToolView):
         claims: dict,
         lti_profile: LtiProfile,
         resource_id: str,
+        lti_tool_configuration: LtiToolConfiguration,
     ):
         """Handle AGS (Assignment and Grade Services) claims.
 
-        Creates a LtiGradedResource instance associated to the launch data if
-        a LtiGradedResource instance does not exist.
+        Always records the launch's coupled lineitem (one gradebook column per placement),
+        which serves the default **coupled** passback mode. In **per-problem** mode (Moodle
+        only, per the tool configuration) it additionally fans out one lineitem per problem
+        in the launched content.
 
         Args:
             message: DjangoMessageLaunch object.
             claims: Claims dictionary.
             lti_profile: LtiProfile instance.
             resource_id: Resource ID string.
+            lti_tool_configuration: LtiToolConfiguration for this launch's tool.
 
         Raises:
             ResourceLinkException: If `lineitem` or score scope claims are missing.
@@ -615,6 +621,7 @@ class ResourceLinkLaunchView(LTIToolView):
                 _(f'Missing required AGS scope: {AGS_SCORE_SCOPE}'),
             )
 
+        # Coupled (per-placement) lineitem — used by every platform, the default mode.
         try:
             LtiGradedResource.objects.get_or_create(
                 lti_profile=lti_profile,
@@ -624,10 +631,15 @@ class ResourceLinkLaunchView(LTIToolView):
         except ValidationError as exc:
             raise ResourceLinkException(_(exc.messages[0])) from exc
 
+        # Per-problem fan-out (Moodle only). Coupled mode (Canvas/Blackboard) stops here.
         lineitems_url = ags_endpoint.get('lineitems', '')
-        if lineitems_url and AGS_LINEITEM_SCOPE in ags_endpoint.get('scope', []):
+        if (
+            lti_tool_configuration.uses_per_problem_passback()
+            and lineitems_url
+            and AGS_LINEITEM_SCOPE in ags_endpoint.get('scope', [])
+        ):
             # Per-problem lineitems apply to a course launch or a container-block launch
-            # (section/subsection/unit). Skip only when resource_id is not a valid key.
+            # (subsection/unit). Skip only when resource_id is not a valid key.
             try:
                 CourseKey.from_string(resource_id)
             except InvalidKeyError:
@@ -643,5 +655,6 @@ class ResourceLinkLaunchView(LTIToolView):
                 lti_profile.id,
                 resource_id,
                 claims.get(CONTEXT_CLAIM, {}).get('id', ''),
+                claims.get(RESOURCE_LINK_CLAIM, {}).get('id', ''),
                 lineitems_url,
             )

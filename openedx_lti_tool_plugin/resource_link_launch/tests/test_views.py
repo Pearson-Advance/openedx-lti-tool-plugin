@@ -165,6 +165,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             try_get_message_mock().get_launch_data(),
             get_or_create_lti_profile_mock(),
             get_resource_id_mock(),
+            get_lti_tool_configuration_mock(),
         )
 
     def test_without_lti_profile(
@@ -468,17 +469,17 @@ class TestResourceLinkLaunchViewValidateOpaqueKeys(ResourceLinkLaunchViewBaseTes
         self.assertIsNone(self.view_class.validate_opaque_keys(self.course_key, self.usage_key, ''))
         gettext_mock.assert_not_called()
 
-    @ddt.data('sequential', 'chapter', 'vertical', 'problem')
+    @ddt.data('sequential', 'vertical', 'problem')
     def test_with_renderable_usage_key(self, block_type: str, gettext_mock: MagicMock):
-        """Test that section/subsection/unit/component block types are accepted.
+        """Test that subsection/unit/component block types are accepted.
 
-        These all render via render_xblock and must not be rejected.
+        These render via render_xblock and must not be rejected.
         """
         self.usage_key.block_type = block_type
         self.assertIsNone(self.view_class.validate_opaque_keys(self.course_key, self.usage_key, ''))
         gettext_mock.assert_not_called()
 
-    @ddt.data('course')
+    @ddt.data('chapter', 'course')
     def test_with_invalid_usage_key(self, block_type: str, gettext_mock: MagicMock):
         """Test with invalid usage_key argument."""
         self.usage_key.block_type = block_type
@@ -1020,6 +1021,7 @@ class TestResourceLinkLaunchViewHandleAgs(ResourceLinkLaunchViewBaseTestCase):
             launch_data,
             LTI_PROFILE,
             COURSE_ID,
+            MagicMock(),
         )
         launch_message.has_ags.assert_called_once_with()
         lti_graded_resource_mock.objects.get_or_create.assert_called_once_with(
@@ -1052,6 +1054,7 @@ class TestResourceLinkLaunchViewHandleAgs(ResourceLinkLaunchViewBaseTestCase):
                 launch_data,
                 LTI_PROFILE,
                 COURSE_ID,
+                MagicMock(),
             )
 
         launch_message.has_ags.assert_called_once_with()
@@ -1078,6 +1081,7 @@ class TestResourceLinkLaunchViewHandleAgs(ResourceLinkLaunchViewBaseTestCase):
             launch_data,
             LTI_PROFILE,
             COURSE_ID,
+            MagicMock(),
         )
 
         launch_message.has_ags.assert_called_once_with()
@@ -1101,6 +1105,7 @@ class TestResourceLinkLaunchViewHandleAgs(ResourceLinkLaunchViewBaseTestCase):
                 launch_data,
                 LTI_PROFILE,
                 COURSE_ID,
+                MagicMock(),
             )
         gettext_mock.assert_called_once_with('Missing AGS lineitem.')
         lti_graded_resource_mock.objects.filter.assert_not_called()
@@ -1123,6 +1128,7 @@ class TestResourceLinkLaunchViewHandleAgs(ResourceLinkLaunchViewBaseTestCase):
                 launch_data,
                 LTI_PROFILE,
                 COURSE_ID,
+                MagicMock(),
             )
         gettext_mock.assert_called_once_with(f'Missing required AGS scope: {AGS_SCORE_SCOPE}')
         lti_graded_resource_mock.objects.filter.assert_not_called()

@@ -55,8 +55,9 @@ def block_node(block, launch_url: str) -> dict:
 
     Returns:
         A nested dict carrying both display data and the LTI content-item fields.
-        Every level is selectable (section, subsection, unit, component); selecting a
-        parent embeds everything beneath it. ``_children`` holds the nested child nodes.
+        Every level is selectable except sections (``chapter``): a section rendered via
+        render_xblock has no working side navigation, so it stays navigation-only.
+        Selecting a parent embeds everything beneath it. ``_children`` holds the children.
 
     """
     usage_id = str(block.location)
@@ -66,7 +67,7 @@ def block_node(block, launch_url: str) -> dict:
         'id': usage_id,
         'title': block.display_name_with_default or category,
         'category': category,
-        'selectable': True,
+        'selectable': category != 'chapter',
         # LTI content-item fields (consumed by DeepLinkingForm on submit).
         'type': 'ltiResourceLink',
         'url': launch_url,
