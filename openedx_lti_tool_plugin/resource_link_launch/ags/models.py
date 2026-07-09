@@ -25,10 +25,12 @@ log = logging.getLogger(__name__)
 class LtiActivityLineitem(models.Model):
     """Per-problem lineitem mapping for per-problem passback mode (Moodle).
 
-    Created once per (platform, context, resource link, problem) and shared across all
-    users who launch that same platform activity. Keying by ``resource_link_id`` (the
-    platform activity/placement) is what keeps distinct activities that embed the same
-    Open edX problem in separate gradebook columns instead of collapsing into one.
+    Created once per (platform, resource link, problem) and shared across all users who
+    launch that same platform activity. Keying by ``resource_link_id`` (the platform
+    activity/placement) is what keeps distinct activities that embed the same Open edX
+    problem in separate gradebook columns instead of collapsing into one. ``context_id``
+    is kept as data but left out of the unique key (a four-CharField composite exceeds
+    MySQL's 3072-byte index limit, and the resource link already implies the context).
     """
 
     platform_id = models.CharField(
@@ -67,7 +69,7 @@ class LtiActivityLineitem(models.Model):
         app_label = app_config.name
         verbose_name = 'LTI activity lineitem'
         verbose_name_plural = 'LTI activity lineitems'
-        unique_together = ['platform_id', 'context_id', 'resource_link_id', 'problem_id']
+        unique_together = ['platform_id', 'resource_link_id', 'problem_id']
 
     def __str__(self) -> str:
         """Model string representation."""
