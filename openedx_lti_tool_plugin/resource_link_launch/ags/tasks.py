@@ -93,23 +93,27 @@ def setup_problem_lineitems(
     lti_profile_id: int,
     resource_id: str,
     context_id: str,
+    resource_link_id: str,
     lineitems_url: str,
 ):
-    """Create per-block target lineitems and per-user LtiGradedResource records.
+    """Create per-problem target lineitems and per-user LtiGradedResource records.
 
-    Runs asynchronously after a course launch with FULL grade sync. For each gradable
-    block in the course (native problems as well as consumed LTI tools and other scored
-    blocks), creates (once, shared across users) a lineitem on the target platform via
-    pylti1p3's ``find_or_create_lineitem`` and a per-user ``LtiGradedResource`` so that
-    ``send_problem_score_update`` can post that block's score to its own column.
+    Only used in **per-problem** passback mode (Moodle). For each gradable block in the
+    launched content (native problems as well as consumed LTI tools and other scored
+    blocks), creates (once, shared across users of the same activity) a lineitem on the
+    platform via pylti1p3's ``find_or_create_lineitem`` and a per-user
+    ``LtiGradedResource`` so its score posts to its own column.
 
+    The lineitem is keyed and tagged by ``resource_link_id`` so that two platform
+    activities embedding the same Open edX problem get separate columns instead of one.
     The AGS message is rebuilt from a JWT carrying the ``lineitems`` collection URL,
     mirroring ``LtiGradedResource.publish_score``.
 
     Args:
         lti_profile_id: ID of the launching user's LtiProfile.
-        resource_id: The launched Open edX course ID.
-        context_id: LTI context claim id (the target platform's course/context).
+        resource_id: The launched Open edX course/content ID.
+        context_id: LTI context claim id (the platform's course/context).
+        resource_link_id: LTI resource link id (the platform activity/placement).
         lineitems_url: AGS lineitems collection URL from the launch JWT.
 
     """
@@ -147,13 +151,15 @@ def setup_problem_lineitems(
         activity_lineitem, created = LtiActivityLineitem.objects.get_or_create(
             platform_id=lti_profile.platform_id,
             context_id=context_id,
+            resource_link_id=resource_link_id,
             problem_id=block_id,
             defaults={'resource_id': resource_id, 'label': label},
         )
 
         if created or not activity_lineitem.lineitem:
             lineitem = LineItem()
-            lineitem.set_tag(block_id)
+            # Tag per (activity, problem) so distinct placements don't share a lineitem.
+            lineitem.set_tag(f'{resource_link_id}:{block_id}' if resource_link_id else block_id)
             lineitem.set_label(label)
             lineitem.set_score_maximum(float(getattr(block, 'weight', None) or 1.0))
             activity_lineitem.lineitem = ags.find_or_create_lineitem(lineitem, find_by='tag').get_id()
@@ -173,81 +179,71 @@ def setup_problem_lineitems(
             )
 
 
-@shared_task(name=f'{MODULE_PATH}.send_problem_score_update')
-def send_problem_score_update(
-    problem_weighted_earned: str,
-    problem_weighted_possible: str,
-    user_id: str,
-    problem_id: str,
-):
-    """Send problem score update task.
-
-    Task to update the AGS score of a problem asynchronously.
-
-    Args:
-        problem_weighted_earned: Grade earned for the problem.
-        problem_weighted_possible: Grade possible for the problem.
-        user_id: Grading user ID.
-        problem_id: Problem ID.
-
-    """
-    for graded_resource in LtiGradedResource.objects.all_from_user_id(
-        user_id=user_id,
-        context_key=problem_id,
-    ):
-        log.info(
-            'LTI AGS: Sending AGS update for problem %s with user %s',
-            problem_id,
-            user_id,
-        )
-        graded_resource.publish_score(
-            problem_weighted_earned,
-            problem_weighted_possible,
-        )
-
-
-@shared_task(name=f'{MODULE_PATH}.send_vertical_score_update')
-def send_vertical_score_update(
+@shared_task(name=f'{MODULE_PATH}.send_score_updates')
+def send_score_updates(
     user_id: str,
     course_id: str,
     problem_id: str,
 ):
-    """Send vertical score update task.
+    """Publish AGS scores for every launched resource affected by a grade change.
 
-    Task to obtain a vertical's accumulated grade and update the AGS score asynchronously.
-    This is a task that would be executed whenever a problem score is updated. We decided
-    to do it this way because there is no way of telling if a score of a unit was changed.
+    A grade change in Open edX is only ``(user, block)`` — it carries no notion of which
+    platform activity the learner launched. So on each change we walk the changed block
+    and its ancestors (unit, subsection, section) up to — but not including — the course,
+    and for every level that has an ``LtiGradedResource`` for this user we post that
+    level's aggregate score to its lineitem. This serves both:
+
+    - **coupled** records (context = a launched unit/subsection/component) -> the launched
+      resource's aggregate lands in its single per-placement column, and
+    - **per-problem** records (context = a leaf block) -> the block's own score.
+
+    The course level is handled separately by ``publish_course_score``.
 
     Args:
         user_id: Grading user ID.
         course_id: Context course id string.
-        problem_id: Problem ID.
+        problem_id: Usage id of the block whose score changed.
 
     """
-    user = get_user_model().objects.get(id=user_id)
-    problem_descriptor = modulestore().get_item(UsageKey.from_string(problem_id))
-    vertical_key = problem_descriptor.parent
-    vertical_graded_resources = LtiGradedResource.objects.all_from_user_id(
-        user_id=user.id,
-        context_key=str(vertical_key),
-    )
+    lti_profile = LtiProfile.objects.filter(user__id=user_id).first()
+    if not lti_profile:
+        return
 
-    if not vertical_graded_resources:
+    try:
+        usage_key = UsageKey.from_string(problem_id)
+    except InvalidKeyError:
+        return
+
+    user = get_user_model().objects.filter(id=user_id).first()
+    if not user:
         return
 
     course_grade = course_grade_factory().read(
         user,
         modulestore().get_course(CourseKey.from_string(course_id)),
     )
-    earned, possible = course_grade.score_for_module(vertical_key)
 
-    for graded_resource in vertical_graded_resources:
-        log.info(
-            'LTI AGS: Sending AGS update for unit %s with user %s',
-            str(vertical_key),
-            user_id,
+    # Collect the changed block and its ancestors, up to (not including) the course.
+    locations = []
+    block = modulestore().get_item(usage_key)
+    while block is not None and block.location.block_type != 'course':
+        locations.append(block.location)
+        parent = getattr(block, 'parent', None)
+        block = modulestore().get_item(parent) if parent else None
+
+    for location in locations:
+        graded_resources = LtiGradedResource.objects.all_from_user_id(
+            user_id=user_id,
+            context_key=str(location),
         )
-        graded_resource.publish_score(
-            earned,
-            possible,
-        )
+        if not graded_resources:
+            continue
+
+        earned, possible = course_grade.score_for_module(location)
+        for graded_resource in graded_resources:
+            log.info(
+                'LTI AGS: Sending AGS update for %s with user %s',
+                str(location),
+                user_id,
+            )
+            graded_resource.publish_score(earned, possible)

@@ -327,6 +327,12 @@ class LtiToolConfiguration(models.Model):
         EXISTING_AND_NEW = 'existing_and_new', _('Existing and new accounts (prompt)')
         EXISTING_ONLY = 'existing_only', _('Existing accounts only (prompt)')
 
+    class GradePassbackMode(TextChoices):
+        """Enumeration for AGS grade-passback modes."""
+
+        COUPLED = 'coupled', _('Coupled — one column per placement (Canvas, Blackboard, default)')
+        PER_PROBLEM = 'per_problem', _('Per-problem — one column per problem (Moodle only)')
+
     lti_tool = models.OneToOneField(
         LtiTool,
         on_delete=models.CASCADE,
@@ -357,6 +363,17 @@ class LtiToolConfiguration(models.Model):
             users cannot access shared resources.</li>
         </ul>
         """)),
+    )
+    grade_passback_mode = models.CharField(
+        max_length=20,
+        choices=GradePassbackMode.choices,
+        default=GradePassbackMode.COUPLED,
+        verbose_name=_('Grade Passback Mode'),
+        help_text=_(
+            'How AGS scores are sent to this platform: "Coupled" (default) posts one '
+            'aggregate score per placement and works everywhere; "Per-problem" also '
+            'creates one column per problem and is Moodle-only.'
+        ),
     )
 
     class Meta:
@@ -429,6 +446,15 @@ class LtiToolConfiguration(models.Model):
 
         """
         return self.user_provisioning_mode == self.UserProvisioningMode.EXISTING_ONLY
+
+    def uses_per_problem_passback(self) -> bool:
+        """Return True if this tool fans out one AGS lineitem per problem (Moodle).
+
+        Returns:
+            True for per-problem mode, False for the default coupled (per-placement) mode.
+
+        """
+        return self.grade_passback_mode == self.GradePassbackMode.PER_PROBLEM
 
     def __str__(self) -> str:
         """Get a string representation of this model instance."""

@@ -449,6 +449,21 @@ class TestLtiToolConfiguration(TestCase):
         self.allowed_course_ids = ['course-v1:x+x+x', 'course-v1:x+x+y']
         self.tool_configuration = LtiToolConfiguration.objects.get(lti_tool=self.lti_tool)
 
+    def test_grade_passback_mode_defaults_to_coupled(self):
+        """Grade passback defaults to coupled (per-problem fan-out off)."""
+        self.assertEqual(
+            self.tool_configuration.grade_passback_mode,
+            LtiToolConfiguration.GradePassbackMode.COUPLED,
+        )
+        self.assertFalse(self.tool_configuration.uses_per_problem_passback())
+
+    def test_uses_per_problem_passback_when_enabled(self):
+        """uses_per_problem_passback is True only in per-problem mode."""
+        self.tool_configuration.grade_passback_mode = (
+            LtiToolConfiguration.GradePassbackMode.PER_PROBLEM
+        )
+        self.assertTrue(self.tool_configuration.uses_per_problem_passback())
+
     @patch.object(CourseKey, 'from_string')
     @patch('openedx_lti_tool_plugin.models.isinstance')
     @patch('openedx_lti_tool_plugin.models.json.loads')
