@@ -20,6 +20,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='ltiactivitylineitem',
-            unique_together={('platform_id', 'context_id', 'resource_link_id', 'problem_id')},
+            unique_together={('platform_id', 'resource_link_id', 'problem_id')},
         ),
     ]

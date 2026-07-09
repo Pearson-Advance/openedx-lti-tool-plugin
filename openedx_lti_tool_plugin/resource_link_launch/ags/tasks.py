@@ -150,10 +150,9 @@ def setup_problem_lineitems(
 
         activity_lineitem, created = LtiActivityLineitem.objects.get_or_create(
             platform_id=lti_profile.platform_id,
-            context_id=context_id,
             resource_link_id=resource_link_id,
             problem_id=block_id,
-            defaults={'resource_id': resource_id, 'label': label},
+            defaults={'context_id': context_id, 'resource_id': resource_id, 'label': label},
         )
 
         if created or not activity_lineitem.lineitem:
