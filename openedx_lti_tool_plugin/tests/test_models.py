@@ -9,17 +9,24 @@ import ddt
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db.models import signals
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.models import CourseContext, CourseContextQuerySet, LtiProfile, LtiToolConfiguration
 from openedx_lti_tool_plugin.resource_link_launch.roles import (
     COURSE_STAFF_ROLE,
     DEFAULT_ROLE_MAPPING,
     LTI_ROLE_INSTRUCTOR,
+)
+from openedx_lti_tool_plugin.models import (
+    USERNAME_MAX_LENGTH,
+    USERNAME_STRATEGY_EMAIL_PREFIX,
+    CourseContext,
+    CourseContextQuerySet,
+    LtiProfile,
+    LtiToolConfiguration,
 )
 from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
@@ -393,6 +400,69 @@ class TestLtiProfile(TestCase):
             self.lti_profile.username,
             f'{name_return}{self.lti_profile.short_uuid}',
         )
+
+    @override_settings(OLTITP_USERNAME_GENERATION_STRATEGY=USERNAME_STRATEGY_EMAIL_PREFIX)
+    @patch.object(LtiProfile, 'get_available_username', side_effect=lambda base: base)
+    @ddt.data(
+        ('j.smith@example.com', 'jsmith'),
+        ('John.Smith@example.com', 'johnsmith'),
+        ('a_b-c+d@example.com', 'abcd'),
+        (f'{"x" * 40}@example.com', 'x' * USERNAME_MAX_LENGTH),
+    )
+    @ddt.unpack
+    def test_username_email_prefix_strategy(
+        self,
+        email: str,
+        expected: str,
+        get_available_username_mock: MagicMock,
+    ):
+        """Test username property with email_prefix strategy."""
+        self.lti_profile.user = None
+        self.lti_profile.pii = {'email': email}
+
+        self.assertEqual(self.lti_profile.username, expected)
+        get_available_username_mock.assert_called_once_with(expected)
+
+    @override_settings(OLTITP_USERNAME_GENERATION_STRATEGY=USERNAME_STRATEGY_EMAIL_PREFIX)
+    @ddt.data({}, {'email': ''}, {'email': 'not-an-email'})
+    def test_username_email_prefix_strategy_fallback(self, pii: dict):
+        """Test username email_prefix strategy falls back to uuid without email."""
+        self.lti_profile.user = None
+        self.lti_profile.pii = pii
+
+        self.assertEqual(
+            self.lti_profile.username,
+            self.lti_profile.username_from_uuid(),
+        )
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    @ddt.data(
+        ([False], 'jsmith'),
+        ([True, False], 'jsmith2'),
+        ([True, True, False], 'jsmith3'),
+    )
+    @ddt.unpack
+    def test_get_available_username(
+        self,
+        exists_side_effect: list,
+        expected: str,
+        filter_mock: MagicMock,
+    ):
+        """Test get_available_username adds incremental numeric suffix on collision."""
+        filter_mock.return_value.exists.side_effect = exists_side_effect
+
+        self.assertEqual(LtiProfile.get_available_username('jsmith'), expected)
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_get_available_username_respects_max_length(self, filter_mock: MagicMock):
+        """Test get_available_username keeps suffixed username within max length."""
+        filter_mock.return_value.exists.side_effect = [True, False]
+        base = 'a' * USERNAME_MAX_LENGTH
+
+        result = LtiProfile.get_available_username(base)
+
+        self.assertEqual(len(result), USERNAME_MAX_LENGTH)
+        self.assertTrue(result.endswith('2'))
 
     def test_email_property(self):
         """Test email property."""
