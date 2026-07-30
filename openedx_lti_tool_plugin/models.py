@@ -5,6 +5,7 @@ import uuid
 from typing import TypeVar
 
 import shortuuid
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -27,6 +28,12 @@ from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 User = get_user_model()
 UserProfile = user_profile()
+
+# Maximum length allowed for an Open edX username.
+USERNAME_MAX_LENGTH = 30
+# Username generation strategies for OLTITP_USERNAME_GENERATION_STRATEGY setting.
+USERNAME_STRATEGY_UUID = 'uuid'
+USERNAME_STRATEGY_EMAIL_PREFIX = 'email_prefix'
 
 
 class LtiProfile(models.Model):
@@ -159,11 +166,44 @@ class LtiProfile(models.Model):
 
     @property
     def username(self) -> str:
-        """str: Username."""
+        """str: Username.
+
+        The username is generated according to the
+        OLTITP_USERNAME_GENERATION_STRATEGY setting:
+
+        - 'uuid' (default): legacy short-UUID based username.
+        - 'email_prefix': readable username derived from the email claim prefix,
+          falling back to the 'uuid' strategy when no email is present.
+
+        Returns:
+            Generated username string.
+
+        """
         # Return from user field.
         if getattr(self, 'user', None):
             return self.user.username
 
+        strategy = getattr(
+            settings,
+            'OLTITP_USERNAME_GENERATION_STRATEGY',
+            USERNAME_STRATEGY_UUID,
+        )
+
+        # Return using email prefix, falling back to uuid strategy.
+        if strategy == USERNAME_STRATEGY_EMAIL_PREFIX:
+            if username := self.username_from_email_prefix():
+                return username
+
+        return self.username_from_uuid()
+
+    def username_from_uuid(self) -> str:
+        """Generate username from name and short_uuid (legacy behavior).
+
+        Returns:
+            Username built with name first word and short_uuid, or short_uuid
+            only when no name is available.
+
+        """
         try:
             # Return using name and short_uuid.
             name = self.name.split()
@@ -174,6 +214,53 @@ class LtiProfile(models.Model):
         except IndexError:
             # Return using short_uuid.
             return f'{self.short_uuid}'
+
+    def username_from_email_prefix(self) -> str:
+        """Generate a readable username from the LTI email claim prefix.
+
+        The prefix (text before '@') is sanitized to comply with Open edX
+        username constraints (lowercase, alphanumeric, max length) and made
+        unique against existing users.
+
+        Returns:
+            Sanitized and collision-free username, or an empty string when no
+            usable email prefix is present (signaling a fallback to the uuid
+            strategy).
+
+        """
+        email = self.pii.get('email', '')
+        prefix = email.split('@')[0] if '@' in email else ''
+        base = re.sub(r'[\W_]+', '', prefix).lower()[:USERNAME_MAX_LENGTH]
+
+        if not base:
+            return ''
+
+        return self.get_available_username(base)
+
+    @staticmethod
+    def get_available_username(base: str) -> str:
+        """Return an available username based on a base string.
+
+        Adds an incremental numeric suffix when the username already exists
+        (base, base2, base3, ...), keeping the result within
+        USERNAME_MAX_LENGTH.
+
+        Args:
+            base: Base username string.
+
+        Returns:
+            An available username string.
+
+        """
+        username = base
+        suffix = 1
+
+        while User.objects.filter(username=username).exists():
+            suffix += 1
+            tail = str(suffix)
+            username = f'{base[:USERNAME_MAX_LENGTH - len(tail)]}{tail}'
+
+        return username
 
     @property
     def user_profile_field_values(self) -> dict:

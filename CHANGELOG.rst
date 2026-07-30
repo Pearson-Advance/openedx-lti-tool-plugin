@@ -14,7 +14,13 @@ Change Log
 Unreleased
 **********
 
-*
+Added
+=====
+
+- Add ``OLTITP_USERNAME_GENERATION_STRATEGY`` setting to generate the Open edX
+  username from the LTI email claim prefix (``email_prefix`` strategy), with
+  sanitization to Open edX username constraints and an incremental numeric
+  suffix on collision. Defaults to the legacy ``uuid`` strategy.
 
 0.4.1 - 2026-06-18
 ********************

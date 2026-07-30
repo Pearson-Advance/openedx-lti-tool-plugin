@@ -43,6 +43,9 @@ def plugin_settings(settings: LazySettings):
     # General settings
     settings.OLTITP_ENABLE_LTI_TOOL = False
 
+    # Username generation settings
+    settings.OLTITP_USERNAME_GENERATION_STRATEGY = 'uuid'  # 'uuid' | 'email_prefix'
+
     # Deep linking settings
     settings.OLTITP_DEEP_LINKING_FORM_TEMPLATE = 'openedx_lti_tool_plugin/deep_linking/form.html'
 
