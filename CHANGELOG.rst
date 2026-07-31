@@ -14,7 +14,14 @@ Change Log
 Unreleased
 **********
 
-*
+Added
+=====
+
+- Add per-tool LTI role assignment: the LTI 1.3 roles claim can be mapped to an
+  Open edX course-context role (Course Staff / Course Instructor) via the
+  ``enable_role_assignment`` and ``role_mapping`` fields on the LTI tool
+  configuration. Disabled by default, scoped to course-context roles, and
+  falling back to Student for missing, unrecognized or Learner roles.
 
 0.4.1 - 2026-06-18
 ********************

@@ -16,6 +16,11 @@ from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKe
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
 from openedx_lti_tool_plugin.models import CourseContext, CourseContextQuerySet, LtiProfile, LtiToolConfiguration
+from openedx_lti_tool_plugin.resource_link_launch.roles import (
+    COURSE_STAFF_ROLE,
+    DEFAULT_ROLE_MAPPING,
+    LTI_ROLE_INSTRUCTOR,
+)
 from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
 MODULE_PATH = 'openedx_lti_tool_plugin.models'
@@ -449,6 +454,7 @@ class TestLtiToolConfiguration(TestCase):
         self.allowed_course_ids = ['course-v1:x+x+x', 'course-v1:x+x+y']
         self.tool_configuration = LtiToolConfiguration.objects.get(lti_tool=self.lti_tool)
 
+    @patch.object(LtiToolConfiguration, 'clean_role_mapping')
     @patch.object(CourseKey, 'from_string')
     @patch('openedx_lti_tool_plugin.models.isinstance')
     @patch('openedx_lti_tool_plugin.models.json.loads')
@@ -457,6 +463,7 @@ class TestLtiToolConfiguration(TestCase):
         json_loads_mock: MagicMock,
         isinstance_mock: MagicMock,
         course_key_mock: MagicMock,
+        clean_role_mapping_mock: MagicMock,
     ):
         """Test clean method with valid allowed_course_ids field.
 
@@ -464,6 +471,7 @@ class TestLtiToolConfiguration(TestCase):
             json_loads_mock: Mocked json.loads function.
             isinstance_mock: Mocked isinstance function.
             course_key_mock: Mocked CourseKey from_string method.
+            clean_role_mapping_mock: Mocked clean_role_mapping method.
         """
         json_loads_mock.return_value = self.allowed_course_ids
 
@@ -472,6 +480,7 @@ class TestLtiToolConfiguration(TestCase):
         json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
         isinstance_mock.assert_called_once_with(json_loads_mock.return_value, list)
         course_key_mock.assert_has_calls(map(call, self.allowed_course_ids))
+        clean_role_mapping_mock.assert_called_once_with()
 
     @patch('openedx_lti_tool_plugin.models._', return_value='')
     @patch('openedx_lti_tool_plugin.models.json.loads', side_effect=ValueError())
@@ -622,6 +631,59 @@ class TestLtiToolConfiguration(TestCase):
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY.value, choices)
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW.value, choices)
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_ONLY.value, choices)
+
+    def test_clean_role_mapping_with_valid_mapping(self):
+        """Test clean_role_mapping method with a valid role mapping."""
+        self.tool_configuration.role_mapping = {LTI_ROLE_INSTRUCTOR: COURSE_STAFF_ROLE}
+
+        self.assertIsNone(self.tool_configuration.clean_role_mapping())
+
+    def test_clean_role_mapping_with_empty_mapping(self):
+        """Test clean_role_mapping method with an empty role mapping."""
+        self.tool_configuration.role_mapping = {}
+
+        self.assertIsNone(self.tool_configuration.clean_role_mapping())
+
+    @patch(f'{MODULE_PATH}._', return_value='')
+    def test_clean_role_mapping_with_invalid_type(self, gettext_mock: MagicMock):
+        """Test clean_role_mapping method with a non-dictionary role mapping.
+
+        Args:
+            gettext_mock: Mocked gettext function.
+        """
+        self.tool_configuration.role_mapping = ['not', 'a', 'dict']
+
+        with self.assertRaises(ValidationError) as cm:
+            self.tool_configuration.clean_role_mapping()
+
+        self.assertIn('role_mapping', cm.exception.message_dict)
+
+    @patch(f'{MODULE_PATH}._', return_value='')
+    def test_clean_role_mapping_with_invalid_role(self, gettext_mock: MagicMock):
+        """Test clean_role_mapping method with an invalid course role value.
+
+        Args:
+            gettext_mock: Mocked gettext function.
+        """
+        self.tool_configuration.role_mapping = {LTI_ROLE_INSTRUCTOR: 'superuser'}
+
+        with self.assertRaises(ValidationError) as cm:
+            self.tool_configuration.clean_role_mapping()
+
+        self.assertIn('role_mapping', cm.exception.message_dict)
+
+    def test_get_role_mapping_with_mapping(self):
+        """Test get_role_mapping method with a configured role mapping."""
+        role_mapping = {LTI_ROLE_INSTRUCTOR: COURSE_STAFF_ROLE}
+        self.tool_configuration.role_mapping = role_mapping
+
+        self.assertEqual(self.tool_configuration.get_role_mapping(), role_mapping)
+
+    def test_get_role_mapping_without_mapping(self):
+        """Test get_role_mapping method without a configured role mapping."""
+        self.tool_configuration.role_mapping = {}
+
+        self.assertEqual(self.tool_configuration.get_role_mapping(), DEFAULT_ROLE_MAPPING)
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')
