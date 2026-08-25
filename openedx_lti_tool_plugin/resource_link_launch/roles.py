@@ -95,11 +95,17 @@ def get_course_role(lti_roles: List[str], role_mapping: dict) -> str:
     return STUDENT_ROLE
 
 
-def assign_course_role(user: AbstractBaseUser, course_key: CourseKey, course_role: str):
-    """Assign an Open edX course-context role to a User.
+def sync_course_role(user: AbstractBaseUser, course_key: CourseKey, course_role: str):
+    """Synchronize the LTI-managed course role of a User for a course.
 
-    Role assignment is additive and scoped to the course context. STUDENT_ROLE
-    (and any non-assignable role) grants no privileged course role.
+    Reconciles the privileged course-context roles this plugin manages
+    (COURSE_STAFF_ROLE, COURSE_INSTRUCTOR_ROLE) with the target role resolved
+    from the launch: the target privileged role is granted and every other
+    managed role is revoked. This keeps the Open edX course role in sync with
+    the platform's declared role on each launch, so a platform-side downgrade
+    (e.g. staff -> student) is reflected instead of leaving a stale grant.
+    STUDENT_ROLE (and any non-assignable role) grants no privileged role and
+    revokes any managed role the User previously held.
 
     Args:
         user: User instance.
@@ -107,17 +113,21 @@ def assign_course_role(user: AbstractBaseUser, course_key: CourseKey, course_rol
         course_role: Open edX course role identifier.
 
     """
-    if course_role == COURSE_STAFF_ROLE:
-        role_class = course_staff_role()
-    elif course_role == COURSE_INSTRUCTOR_ROLE:
-        role_class = course_instructor_role()
-    else:
-        return
+    managed_roles = {
+        COURSE_STAFF_ROLE: course_staff_role(),
+        COURSE_INSTRUCTOR_ROLE: course_instructor_role(),
+    }
 
-    role_class(course_key).add_users(user)
-    log.info(
-        'LTI role assignment: granted "%s" on "%s" to user "%s".',
-        course_role,
-        course_key,
-        user.id,
-    )
+    for role_id, role_class in managed_roles.items():
+        role = role_class(course_key)
+
+        if role_id == course_role:
+            role.add_users(user)
+            log.info(
+                'LTI role assignment: granted "%s" on "%s" to user "%s".',
+                role_id,
+                course_key,
+                user.id,
+            )
+        else:
+            role.remove_users(user)

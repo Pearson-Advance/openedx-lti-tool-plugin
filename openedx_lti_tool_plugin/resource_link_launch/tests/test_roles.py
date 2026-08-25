@@ -13,9 +13,9 @@ from openedx_lti_tool_plugin.resource_link_launch.roles import (
     LTI_ROLE_LEARNER,
     ROLES_CLAIM,
     STUDENT_ROLE,
-    assign_course_role,
     get_course_role,
     get_roles_from_launch_data,
+    sync_course_role,
 )
 from openedx_lti_tool_plugin.resource_link_launch.tests import MODULE_PATH
 
@@ -80,8 +80,8 @@ class TestGetCourseRole(TestCase):
 
 
 @ddt.ddt
-class TestAssignCourseRole(TestCase):
-    """Test assign_course_role function."""
+class TestSyncCourseRole(TestCase):
+    """Test sync_course_role function."""
 
     def setUp(self):
         """Set up test fixtures."""
@@ -89,29 +89,45 @@ class TestAssignCourseRole(TestCase):
         self.user = MagicMock()
         self.course_key = MagicMock()
 
+    @patch(f'{MODULE_PATH}.course_instructor_role')
     @patch(f'{MODULE_PATH}.course_staff_role')
-    def test_with_staff_role(self, course_staff_role_mock: MagicMock):
-        """Test with the staff course role.
+    def test_with_staff_role(
+        self,
+        course_staff_role_mock: MagicMock,
+        course_instructor_role_mock: MagicMock,
+    ):
+        """Test that the staff role is granted and the instructor role revoked.
 
         Args:
             course_staff_role_mock: Mocked course_staff_role wrapper.
+            course_instructor_role_mock: Mocked course_instructor_role wrapper.
         """
-        assign_course_role(self.user, self.course_key, COURSE_STAFF_ROLE)
+        sync_course_role(self.user, self.course_key, COURSE_STAFF_ROLE)
 
         course_staff_role_mock.return_value.assert_called_once_with(self.course_key)
         course_staff_role_mock.return_value.return_value.add_users.assert_called_once_with(self.user)
+        course_instructor_role_mock.return_value.assert_called_once_with(self.course_key)
+        course_instructor_role_mock.return_value.return_value.remove_users.assert_called_once_with(self.user)
 
     @patch(f'{MODULE_PATH}.course_instructor_role')
-    def test_with_instructor_role(self, course_instructor_role_mock: MagicMock):
-        """Test with the instructor course role.
+    @patch(f'{MODULE_PATH}.course_staff_role')
+    def test_with_instructor_role(
+        self,
+        course_staff_role_mock: MagicMock,
+        course_instructor_role_mock: MagicMock,
+    ):
+        """Test that the instructor role is granted and the staff role revoked.
 
         Args:
+            course_staff_role_mock: Mocked course_staff_role wrapper.
             course_instructor_role_mock: Mocked course_instructor_role wrapper.
         """
-        assign_course_role(self.user, self.course_key, COURSE_INSTRUCTOR_ROLE)
+        sync_course_role(self.user, self.course_key, COURSE_INSTRUCTOR_ROLE)
 
         course_instructor_role_mock.return_value.assert_called_once_with(self.course_key)
         course_instructor_role_mock.return_value.return_value.add_users.assert_called_once_with(self.user)
+        course_staff_role_mock.return_value.assert_called_once_with(self.course_key)
+        course_staff_role_mock.return_value.return_value.remove_users.assert_called_once_with(self.user)
 
     @ddt.data(STUDENT_ROLE, 'unknown-role', '')
     @patch(f'{MODULE_PATH}.course_instructor_role')
@@ -122,14 +138,16 @@ class TestAssignCourseRole(TestCase):
         course_staff_role_mock: MagicMock,
         course_instructor_role_mock: MagicMock,
     ):
-        """Test that non-privileged roles grant no course role.
+        """Test that non-privileged roles revoke every managed role and grant none.
 
         Args:
             course_role: Open edX course role identifier.
             course_staff_role_mock: Mocked course_staff_role wrapper.
             course_instructor_role_mock: Mocked course_instructor_role wrapper.
         """
-        assign_course_role(self.user, self.course_key, course_role)
+        sync_course_role(self.user, self.course_key, course_role)
 
-        course_staff_role_mock.assert_not_called()
-        course_instructor_role_mock.assert_not_called()
+        course_staff_role_mock.return_value.return_value.remove_users.assert_called_once_with(self.user)
+        course_staff_role_mock.return_value.return_value.add_users.assert_not_called()
+        course_instructor_role_mock.return_value.return_value.remove_users.assert_called_once_with(self.user)
+        course_instructor_role_mock.return_value.return_value.add_users.assert_not_called()

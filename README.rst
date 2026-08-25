@@ -153,7 +153,7 @@ Role Assignment
 
 By default, every user launched through an LTI 1.3 resource link is enrolled as a Student, regardless of the role declared by the platform. This feature reads the LTI 1.3 roles claim (https://www.imsglobal.org/spec/lti/v1p3#role-vocabularies) sent on the launch and translates it into an Open edX course-context role, respecting the trust boundary: the platform declares the role, and the Open edX operator decides per LTI tool configuration whether and how it is honored.
 
-Role assignment is disabled by default and configured per LTI tool configuration, so it only applies to the platforms the operator explicitly decided to trust. Only course-context roles are honored; LTI system and institution roles are ignored (no system-wide grants). A missing, unrecognized or Learner role falls back to Student (enrollment only). The default mapping is:
+Role assignment is disabled by default and configured per LTI tool configuration, so it only applies to the platforms the operator explicitly decided to trust. Only course-context roles are honored; LTI system and institution roles are ignored (no system-wide grants). A missing, unrecognized or Learner role falls back to Student (enrollment only). The managed course role is reconciled on every launch, so a platform-side role change (e.g. Instructor downgraded to Learner) is reflected on Open edX instead of leaving the previously granted role in place. The default mapping is:
 
 - `http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor` -> Course Instructor role (`instructor`).
 - `http://purl.imsglobal.org/vocab/lis/v2/membership#Administrator` -> Course Staff role (`staff`).

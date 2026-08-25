@@ -33,9 +33,9 @@ from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration, Use
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
 from openedx_lti_tool_plugin.resource_link_launch.exceptions import ResourceLinkException
 from openedx_lti_tool_plugin.resource_link_launch.roles import (
-    assign_course_role,
     get_course_role,
     get_roles_from_launch_data,
+    sync_course_role,
 )
 from openedx_lti_tool_plugin.resource_link_launch.utils import validate_resource_link_message
 from openedx_lti_tool_plugin.utils import get_identity_claims
@@ -158,7 +158,7 @@ class ResourceLinkLaunchView(LTIToolView):
             # Enroll User.
             self.enroll(user, course_key)
 
-            # Assign course role from the LTI roles claim.
+            # Synchronize course role from the LTI roles claim.
             self.assign_roles(user, course_key, claims, lti_tool_configuration)
 
             # Get resource link response.
@@ -529,12 +529,16 @@ class ResourceLinkLaunchView(LTIToolView):
         claims: dict,
         lti_tool_configuration: LtiToolConfiguration,
     ):
-        """Assign an Open edX course role from the LTI roles claim.
+        """Synchronize an Open edX course role from the LTI roles claim.
 
         This honors the trust boundary: the roles claim is only translated into
         an Open edX course role when the LtiToolConfiguration for the launching
         tool has role assignment explicitly enabled. Otherwise the launch keeps
         its default behavior (the User is enrolled as a Student).
+
+        When enabled, the managed course role is reconciled on every launch, so
+        a platform-side role change (e.g. staff -> student) is reflected instead
+        of leaving a stale grant.
 
         Args:
             user: User instance.
@@ -548,7 +552,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         lti_roles = get_roles_from_launch_data(claims)
         course_role = get_course_role(lti_roles, lti_tool_configuration.get_role_mapping())
-        assign_course_role(user, course_key, course_role)
+        sync_course_role(user, course_key, course_role)
 
     def get_launch_response(
         self,

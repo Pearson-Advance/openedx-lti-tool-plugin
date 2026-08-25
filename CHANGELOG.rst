@@ -21,7 +21,10 @@ Added
   Open edX course-context role (Course Staff / Course Instructor) via the
   ``enable_role_assignment`` and ``role_mapping`` fields on the LTI tool
   configuration. Disabled by default, scoped to course-context roles, and
-  falling back to Student for missing, unrecognized or Learner roles.
+  falling back to Student for missing, unrecognized or Learner roles. The
+  managed course role is reconciled on every launch, so a platform-side role
+  change (e.g. a downgrade to Learner) revokes the previously granted role
+  instead of leaving it in place.
 
 0.4.1 - 2026-06-18
 ********************
