@@ -29,6 +29,19 @@ Added
   username from the LTI email claim prefix (``email_prefix`` strategy), with
   sanitization to Open edX username constraints and an incremental numeric
   suffix on collision. Defaults to the legacy ``uuid`` strategy.
+- Add ``OLTITP_USERNAME_BASE_SOURCE`` setting to build a readable Open edX
+  username from the LTI ``name`` claim (default) or the ``email`` claim prefix,
+  with fallback to the other source when the chosen one is empty. The base is
+  sanitized to Open edX username constraints and truncated to 20 characters; a
+  short UUID suffix is appended only on collision.
+
+Changed
+=======
+
+- The LTI username generation now uses the full normalized name base (up to 20
+  characters) and only appends a short UUID on collision, instead of always
+  appending it to a name truncated to 8 characters. Existing users keep their
+  stored usernames; only newly created users are affected.
 
 0.4.1 - 2026-06-18
 ********************

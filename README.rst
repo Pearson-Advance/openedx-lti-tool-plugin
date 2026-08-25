@@ -105,7 +105,7 @@ LMS Settings
 
 - `OLTITP_ENABLE_LTI_TOOL`: Enables or disables the LTI tool plugin.
 - `LtiAuthenticationBackend`: Class needed to be added to AUTHENTICATION_BACKENDS.
-- `OLTITP_USERNAME_GENERATION_STRATEGY`: Strategy used to generate the Open edX username on LTI launch. `'uuid'` (default) keeps the legacy short-UUID based username. `'email_prefix'` derives a readable username from the email claim prefix (text before `@`), sanitized to Open edX username constraints (lowercase, alphanumeric, max length), adding an incremental numeric suffix on collision (jsmith, jsmith2, jsmith3, ...). Falls back to the `'uuid'` behavior when no email is present in the LTI payload.
+- `OLTITP_USERNAME_BASE_SOURCE`: Source used to build a readable Open edX username on LTI launch. `'name'` (default) uses the LTI name claim; `'email'` uses the email claim prefix (text before `@`). When the chosen source is empty, the other source is used as a fallback. The base is normalized to Open edX username constraints (lowercase, alphanumeric, truncated to 20 characters). If the resulting username already exists (case-insensitive), a short UUID suffix is appended (e.g. `jsmith.aB3xK9p2`); when no source is available, a short UUID is used on its own.
 
 Django Waffle Switches
 ======================

@@ -32,9 +32,12 @@ UserProfile = user_profile()
 
 # Maximum length allowed for an Open edX username.
 USERNAME_MAX_LENGTH = 30
-# Username generation strategies for OLTITP_USERNAME_GENERATION_STRATEGY setting.
-USERNAME_STRATEGY_UUID = 'uuid'
-USERNAME_STRATEGY_EMAIL_PREFIX = 'email_prefix'
+# Maximum length for the readable username base, leaving room for a
+# '.<short_uuid>' collision suffix within USERNAME_MAX_LENGTH.
+USERNAME_BASE_MAX_LENGTH = 20
+# Username base sources for the OLTITP_USERNAME_BASE_SOURCE setting.
+USERNAME_SOURCE_NAME = 'name'
+USERNAME_SOURCE_EMAIL = 'email'
 
 
 class LtiProfile(models.Model):
@@ -169,12 +172,14 @@ class LtiProfile(models.Model):
     def username(self) -> str:
         """str: Username.
 
-        The username is generated according to the
-        OLTITP_USERNAME_GENERATION_STRATEGY setting:
-
-        - 'uuid' (default): legacy short-UUID based username.
-        - 'email_prefix': readable username derived from the email claim prefix,
-          falling back to the 'uuid' strategy when no email is present.
+        The username is generated from a readable base derived from the LTI
+        payload identity. The OLTITP_USERNAME_BASE_SOURCE setting selects the
+        base source ('name' (default) or 'email'); when the chosen source is
+        empty, the remaining source is used as a fallback. The base is
+        normalized to Open edX username constraints (lowercase, alphanumeric,
+        truncated to USERNAME_BASE_MAX_LENGTH). When the base is already taken
+        (case-insensitive), a short UUID suffix is appended; when no base is
+        available, the short UUID is used on its own.
 
         Returns:
             Generated username string.
@@ -184,84 +189,67 @@ class LtiProfile(models.Model):
         if getattr(self, 'user', None):
             return self.user.username
 
-        strategy = getattr(
+        return self.available_username(self.username_base())
+
+    def username_base(self) -> str:
+        """Build a normalized username base from the configured source.
+
+        The OLTITP_USERNAME_BASE_SOURCE setting selects the primary source; the
+        remaining source is used as a fallback when the primary one is empty.
+        The result is lowercased, stripped of non-alphanumeric characters (which
+        also collapses whitespace) and truncated to USERNAME_BASE_MAX_LENGTH.
+
+        Returns:
+            Normalized username base, or an empty string when no source is
+            available.
+
+        """
+        source = getattr(
             settings,
-            'OLTITP_USERNAME_GENERATION_STRATEGY',
-            USERNAME_STRATEGY_UUID,
+            'OLTITP_USERNAME_BASE_SOURCE',
+            USERNAME_SOURCE_NAME,
         )
+        pii_email = self.pii_email
+        raw_sources = {
+            USERNAME_SOURCE_NAME: self.name,
+            USERNAME_SOURCE_EMAIL: pii_email.split('@')[0] if pii_email else '',
+        }
 
-        # Return using email prefix, falling back to uuid strategy.
-        if strategy == USERNAME_STRATEGY_EMAIL_PREFIX:
-            if username := self.username_from_email_prefix():
-                return username
+        # Try the configured source first, then the remaining source.
+        ordered = [source] + [key for key in raw_sources if key != source]
 
-        return self.username_from_uuid()
+        for key in ordered:
+            base = re.sub(r'[\W_]+', '', raw_sources.get(key, '')).lower()
+            base = base[:USERNAME_BASE_MAX_LENGTH]
 
-    def username_from_uuid(self) -> str:
-        """Generate username from name and short_uuid (legacy behavior).
+            if base:
+                return base
 
-        Returns:
-            Username built with name first word and short_uuid, or short_uuid
-            only when no name is available.
+        return ''
 
-        """
-        try:
-            # Return using name and short_uuid.
-            name = self.name.split()
-            name = name[0][:8].lower()
-            name = re.sub(r'[\W_]+', '', name)
+    def available_username(self, base: str) -> str:
+        """Return an available username for a normalized base.
 
-            return f'{name}.{self.short_uuid}'
-        except IndexError:
-            # Return using short_uuid.
-            return f'{self.short_uuid}'
-
-    def username_from_email_prefix(self) -> str:
-        """Generate a readable username from the LTI email claim prefix.
-
-        The prefix (text before '@') is sanitized to comply with Open edX
-        username constraints (lowercase, alphanumeric, max length) and made
-        unique against existing users.
-
-        Returns:
-            Sanitized and collision-free username, or an empty string when no
-            usable email prefix is present (signaling a fallback to the uuid
-            strategy).
-
-        """
-        email = self.pii.get('email', '')
-        prefix = email.split('@')[0] if '@' in email else ''
-        base = re.sub(r'[\W_]+', '', prefix).lower()[:USERNAME_MAX_LENGTH]
-
-        if not base:
-            return ''
-
-        return self.get_available_username(base)
-
-    @staticmethod
-    def get_available_username(base: str) -> str:
-        """Return an available username based on a base string.
-
-        Adds an incremental numeric suffix when the username already exists
-        (base, base2, base3, ...), keeping the result within
-        USERNAME_MAX_LENGTH.
+        Uses the clean base when it is free; appends a '.<short_uuid>' suffix
+        when the base is already taken (case-insensitive). Falls back to the
+        short UUID on its own when no base is available.
 
         Args:
-            base: Base username string.
+            base: Normalized username base.
 
         Returns:
             An available username string.
 
         """
-        username = base
-        suffix = 1
+        # No usable base: use the short UUID on its own (legacy fallback).
+        if not base:
+            return self.short_uuid
 
-        while User.objects.filter(username=username).exists():
-            suffix += 1
-            tail = str(suffix)
-            username = f'{base[:USERNAME_MAX_LENGTH - len(tail)]}{tail}'
+        # Append the short UUID on collision; keep the clean base otherwise.
+        if User.objects.filter(username__iexact=base).exists():
+            return f'{base}.{self.short_uuid}'
 
-        return username
+        return base
 
     @property
     def user_profile_field_values(self) -> dict:

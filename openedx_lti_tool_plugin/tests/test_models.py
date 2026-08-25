@@ -21,8 +21,9 @@ from openedx_lti_tool_plugin.resource_link_launch.roles import (
     LTI_ROLE_INSTRUCTOR,
 )
 from openedx_lti_tool_plugin.models import (
+    USERNAME_BASE_MAX_LENGTH,
     USERNAME_MAX_LENGTH,
-    USERNAME_STRATEGY_EMAIL_PREFIX,
+    USERNAME_SOURCE_EMAIL,
     CourseContext,
     CourseContextQuerySet,
     LtiProfile,
@@ -373,96 +374,98 @@ class TestLtiProfile(TestCase):
 
         self.assertEqual(self.lti_profile.name, name_return)
 
-    @ddt.data(
-        (False, {}, ''),
-        (False, {'name': ''}, ''),
-        (
-            False,
-            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
-            f'{UNICODE_USERNAME_GIVEN_NAME}.',
-        ),
-        (True, {}, ''),
-        (
-            True,
-            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
-            '',
-        ),
-    )
-    @ddt.unpack
-    def test_username_property(self, has_user: bool, name_data: dict, name_return: str):
-        """Test username property."""
-        self.lti_profile.pii = name_data
+    def test_username_from_user_field(self):
+        """Test username returns the linked user's username."""
+        self.lti_profile.user = self.user
 
-        if not has_user:
-            self.lti_profile.user = None
+        self.assertEqual(self.lti_profile.username, self.user.username)
 
-        self.assertEqual(
-            self.lti_profile.username,
-            f'{name_return}{self.lti_profile.short_uuid}',
-        )
-
-    @override_settings(OLTITP_USERNAME_GENERATION_STRATEGY=USERNAME_STRATEGY_EMAIL_PREFIX)
-    @patch.object(LtiProfile, 'get_available_username', side_effect=lambda base: base)
-    @ddt.data(
-        ('j.smith@example.com', 'jsmith'),
-        ('John.Smith@example.com', 'johnsmith'),
-        ('a_b-c+d@example.com', 'abcd'),
-        (f'{"x" * 40}@example.com', 'x' * USERNAME_MAX_LENGTH),
-    )
-    @ddt.unpack
-    def test_username_email_prefix_strategy(
+    @patch.object(LtiProfile, 'available_username', return_value='generated')
+    @patch.object(LtiProfile, 'username_base', return_value='base')
+    def test_username_generates_from_base(
         self,
-        email: str,
-        expected: str,
-        get_available_username_mock: MagicMock,
+        username_base_mock: MagicMock,
+        available_username_mock: MagicMock,
     ):
-        """Test username property with email_prefix strategy."""
+        """Test username generates from the normalized base without a user."""
         self.lti_profile.user = None
-        self.lti_profile.pii = {'email': email}
 
-        self.assertEqual(self.lti_profile.username, expected)
-        get_available_username_mock.assert_called_once_with(expected)
+        self.assertEqual(self.lti_profile.username, 'generated')
+        username_base_mock.assert_called_once_with()
+        available_username_mock.assert_called_once_with('base')
 
-    @override_settings(OLTITP_USERNAME_GENERATION_STRATEGY=USERNAME_STRATEGY_EMAIL_PREFIX)
-    @ddt.data({}, {'email': ''}, {'email': 'not-an-email'})
-    def test_username_email_prefix_strategy_fallback(self, pii: dict):
-        """Test username email_prefix strategy falls back to uuid without email."""
-        self.lti_profile.user = None
+    @ddt.data(
+        ({'name': 'Alexander Hamilton'}, 'alexanderhamilton'),
+        ({'name': 'a_b-c+d'}, 'abcd'),
+        ({'name': 'x' * 40}, 'x' * USERNAME_BASE_MAX_LENGTH),
+        ({}, ''),
+    )
+    @ddt.unpack
+    def test_username_base_name_source(self, pii: dict, expected: str):
+        """Test username_base with the default name source."""
         self.lti_profile.pii = pii
 
+        self.assertEqual(self.lti_profile.username_base(), expected)
+
+    @override_settings(OLTITP_USERNAME_BASE_SOURCE=USERNAME_SOURCE_EMAIL)
+    @ddt.data(
+        ({'email': 'j.smith@example.com'}, 'jsmith'),
+        ({'email': 'John.Smith@example.com'}, 'johnsmith'),
+        ({'email': f'{"x" * 40}@example.com'}, 'x' * USERNAME_BASE_MAX_LENGTH),
+    )
+    @ddt.unpack
+    def test_username_base_email_source(self, pii: dict, expected: str):
+        """Test username_base with the email source."""
+        self.lti_profile.pii = pii
+
+        self.assertEqual(self.lti_profile.username_base(), expected)
+
+    @override_settings(OLTITP_USERNAME_BASE_SOURCE=USERNAME_SOURCE_EMAIL)
+    def test_username_base_email_source_falls_back_to_name(self):
+        """Test username_base falls back to name when the email source is empty."""
+        self.lti_profile.pii = {'name': 'Alexander Hamilton'}
+
+        self.assertEqual(self.lti_profile.username_base(), 'alexanderhamilton')
+
+    def test_username_base_name_source_falls_back_to_email(self):
+        """Test username_base falls back to email when the name source is empty."""
+        self.lti_profile.pii = {'email': 'j.smith@example.com'}
+
+        self.assertEqual(self.lti_profile.username_base(), 'jsmith')
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_available_username_returns_clean_base_when_free(self, filter_mock: MagicMock):
+        """Test available_username returns the clean base when it is free."""
+        filter_mock.return_value.exists.return_value = False
+
+        self.assertEqual(self.lti_profile.available_username('jsmith'), 'jsmith')
+        filter_mock.assert_called_once_with(username__iexact='jsmith')
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_available_username_appends_short_uuid_on_collision(self, filter_mock: MagicMock):
+        """Test available_username appends the short UUID when the base is taken."""
+        filter_mock.return_value.exists.return_value = True
+
         self.assertEqual(
-            self.lti_profile.username,
-            self.lti_profile.username_from_uuid(),
+            self.lti_profile.available_username('jsmith'),
+            f'jsmith.{self.lti_profile.short_uuid}',
         )
 
     @patch(f'{MODULE_PATH}.User.objects.filter')
-    @ddt.data(
-        ([False], 'jsmith'),
-        ([True, False], 'jsmith2'),
-        ([True, True, False], 'jsmith3'),
-    )
-    @ddt.unpack
-    def test_get_available_username(
-        self,
-        exists_side_effect: list,
-        expected: str,
-        filter_mock: MagicMock,
-    ):
-        """Test get_available_username adds incremental numeric suffix on collision."""
-        filter_mock.return_value.exists.side_effect = exists_side_effect
+    def test_available_username_within_max_length_on_collision(self, filter_mock: MagicMock):
+        """Test collision username stays within the Open edX max length."""
+        filter_mock.return_value.exists.return_value = True
 
-        self.assertEqual(LtiProfile.get_available_username('jsmith'), expected)
+        result = self.lti_profile.available_username('a' * USERNAME_BASE_MAX_LENGTH)
 
-    @patch(f'{MODULE_PATH}.User.objects.filter')
-    def test_get_available_username_respects_max_length(self, filter_mock: MagicMock):
-        """Test get_available_username keeps suffixed username within max length."""
-        filter_mock.return_value.exists.side_effect = [True, False]
-        base = 'a' * USERNAME_MAX_LENGTH
+        self.assertLessEqual(len(result), USERNAME_MAX_LENGTH)
 
-        result = LtiProfile.get_available_username(base)
-
-        self.assertEqual(len(result), USERNAME_MAX_LENGTH)
-        self.assertTrue(result.endswith('2'))
+    def test_available_username_returns_short_uuid_without_base(self):
+        """Test available_username returns the short UUID when no base is available."""
+        self.assertEqual(
+            self.lti_profile.available_username(''),
+            self.lti_profile.short_uuid,
+        )
 
     def test_email_property(self):
         """Test email property."""
