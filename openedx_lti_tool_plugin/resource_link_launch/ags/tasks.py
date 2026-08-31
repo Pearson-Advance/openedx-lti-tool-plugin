@@ -238,7 +238,7 @@ def send_score_updates(
         if not graded_resources:
             continue
 
-        earned, possible = course_grade.score_for_module(location)
+        earned, possible = course_grade.score_for_block(location)
         for graded_resource in graded_resources:
             log.info(
                 'LTI AGS: Sending AGS update for %s with user %s',
