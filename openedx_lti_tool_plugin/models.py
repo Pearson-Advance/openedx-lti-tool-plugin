@@ -5,6 +5,7 @@ import uuid
 from typing import TypeVar
 
 import shortuuid
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -28,6 +29,15 @@ from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 User = get_user_model()
 UserProfile = user_profile()
+
+# Maximum length allowed for an Open edX username.
+USERNAME_MAX_LENGTH = 30
+# Maximum length for the readable username base, leaving room for a
+# '.<short_uuid>' collision suffix within USERNAME_MAX_LENGTH.
+USERNAME_BASE_MAX_LENGTH = 20
+# Username base sources for the OLTITP_USERNAME_BASE_SOURCE setting.
+USERNAME_SOURCE_NAME = 'name'
+USERNAME_SOURCE_EMAIL = 'email'
 
 
 class LtiProfile(models.Model):
@@ -160,21 +170,86 @@ class LtiProfile(models.Model):
 
     @property
     def username(self) -> str:
-        """str: Username."""
+        """str: Username.
+
+        The username is generated from a readable base derived from the LTI
+        payload identity. The OLTITP_USERNAME_BASE_SOURCE setting selects the
+        base source ('name' (default) or 'email'); when the chosen source is
+        empty, the remaining source is used as a fallback. The base is
+        normalized to Open edX username constraints (lowercase, alphanumeric,
+        truncated to USERNAME_BASE_MAX_LENGTH). When the base is already taken
+        (case-insensitive), a short UUID suffix is appended; when no base is
+        available, the short UUID is used on its own.
+
+        Returns:
+            Generated username string.
+
+        """
         # Return from user field.
         if getattr(self, 'user', None):
             return self.user.username
 
-        try:
-            # Return using name and short_uuid.
-            name = self.name.split()
-            name = name[0][:8].lower()
-            name = re.sub(r'[\W_]+', '', name)
+        return self.available_username(self.username_base())
 
-            return f'{name}.{self.short_uuid}'
-        except IndexError:
-            # Return using short_uuid.
-            return f'{self.short_uuid}'
+    def username_base(self) -> str:
+        """Build a normalized username base from the configured source.
+
+        The OLTITP_USERNAME_BASE_SOURCE setting selects the primary source; the
+        remaining source is used as a fallback when the primary one is empty.
+        The result is lowercased, stripped of non-alphanumeric characters (which
+        also collapses whitespace) and truncated to USERNAME_BASE_MAX_LENGTH.
+
+        Returns:
+            Normalized username base, or an empty string when no source is
+            available.
+
+        """
+        source = getattr(
+            settings,
+            'OLTITP_USERNAME_BASE_SOURCE',
+            USERNAME_SOURCE_NAME,
+        )
+        pii_email = self.pii_email
+        raw_sources = {
+            USERNAME_SOURCE_NAME: self.name,
+            USERNAME_SOURCE_EMAIL: pii_email.split('@')[0] if pii_email else '',
+        }
+
+        # Try the configured source first, then the remaining source.
+        ordered = [source] + [key for key in raw_sources if key != source]
+
+        for key in ordered:
+            base = re.sub(r'[\W_]+', '', raw_sources.get(key, '')).lower()
+            base = base[:USERNAME_BASE_MAX_LENGTH]
+
+            if base:
+                return base
+
+        return ''
+
+    def available_username(self, base: str) -> str:
+        """Return an available username for a normalized base.
+
+        Uses the clean base when it is free; appends a '.<short_uuid>' suffix
+        when the base is already taken (case-insensitive). Falls back to the
+        short UUID on its own when no base is available.
+
+        Args:
+            base: Normalized username base.
+
+        Returns:
+            An available username string.
+
+        """
+        # No usable base: use the short UUID on its own (legacy fallback).
+        if not base:
+            return self.short_uuid
+
+        # Append the short UUID on collision; keep the clean base otherwise.
+        if User.objects.filter(username__iexact=base).exists():
+            return f'{base}.{self.short_uuid}'
+
+        return base
 
     @property
     def user_profile_field_values(self) -> dict:
