@@ -148,6 +148,26 @@ By default, PII data is not obtained from launch data, this feature allows you t
 5. On the LTI profiles list, find the LTI profile that matches the Platform ID, Client ID, and Subject ID of your platform launch.
 6. The LTI profile should contain data on the PII JSON field.
 
+Role Assignment
+===============
+
+By default, every user launched through an LTI 1.3 resource link is enrolled as a Student, regardless of the role declared by the platform. This feature reads the LTI 1.3 roles claim (https://www.imsglobal.org/spec/lti/v1p3#role-vocabularies) sent on the launch and translates it into an Open edX course-context role, respecting the trust boundary: the platform declares the role, and the Open edX operator decides per LTI tool configuration whether and how it is honored.
+
+Role assignment is disabled by default and configured per LTI tool configuration, so it only applies to the platforms the operator explicitly decided to trust. Only course-context roles are honored; LTI system and institution roles are ignored (no system-wide grants). A missing, unrecognized or Learner role falls back to Student (enrollment only). The managed course role is reconciled on every launch, so a platform-side role change (e.g. Instructor downgraded to Learner) is reflected on Open edX instead of leaving the previously granted role in place. The default mapping is:
+
+- `http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor` -> Course Instructor role (`instructor`).
+- `http://purl.imsglobal.org/vocab/lis/v2/membership#Administrator` -> Course Staff role (`staff`).
+- `http://purl.imsglobal.org/vocab/lis/v2/membership#Learner` -> Student (enrollment only).
+
+Follow these next steps to set this feature:
+
+1. Go to LMS Admin > Open edX LTI Tool Plugin > LTI tool configurations.
+2. On the configuration list, find the configuration that matches the previously created LTI tool.
+3. Enable the "Enable role assignment" field.
+4. (Optional) Override the default mapping by editing the "Role mapping" JSON field. Keys are LTI role URIs and values are one of `"instructor"`, `"staff"` or `"student"`. Leave it empty to use the default mapping.
+5. Execute an LTI 1.3 resource link launch from the platform, sending the roles claim.
+6. Go to LMS Admin > Courses and confirm the launched user was granted the mapped course team role for the launched course.
+
 License
 *******
 

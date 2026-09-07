@@ -65,6 +65,7 @@ class TestResourceLinkLaunchViewGet(ResourceLinkLaunchViewBaseTestCase):
         post_mock.assert_called_once_with(self.request)
 
 
+@patch.object(ResourceLinkLaunchView, 'assign_roles')
 @patch.object(ResourceLinkLaunchView, 'try_get_message')
 @patch(f'{MODULE_PATH}.validate_resource_link_message')
 @patch.object(ResourceLinkLaunchView, 'get_resource_id')
@@ -106,6 +107,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         get_resource_id_mock: MagicMock,
         validate_resource_link_message_mock: MagicMock,
         try_get_message_mock: MagicMock,
+        assign_roles_mock: MagicMock,
     ):
         """Test with LtiProfle."""
         try_get_message_mock.return_value.get_launch_data.return_value = LAUNCH_DATA
@@ -149,6 +151,12 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
             authenticate_and_login_mock(),
             self.course_key,
         )
+        assign_roles_mock.assert_called_once_with(
+            authenticate_and_login_mock(),
+            self.course_key,
+            try_get_message_mock().get_launch_data(),
+            get_lti_tool_configuration_mock(),
+        )
         get_launch_response_mock.assert_called_once_with(
             self.request,
             authenticate_and_login_mock(),
@@ -178,6 +186,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         get_resource_id_mock: MagicMock,
         validate_resource_link_message_mock: MagicMock,
         try_get_message_mock: MagicMock,
+        assign_roles_mock: MagicMock,
     ):
         """Test without LtiProfle."""
         try_get_message_mock.return_value.get_launch_data.return_value = LAUNCH_DATA
@@ -223,6 +232,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         )
         authenticate_and_login_mock.assert_not_called()
         enroll_mock.assert_not_called()
+        assign_roles_mock.assert_not_called()
         get_launch_response_mock.assert_not_called()
         handle_ags_mock.assert_not_called()
 
@@ -246,6 +256,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         get_resource_id_mock: MagicMock,
         validate_resource_link_message_mock: MagicMock,
         try_get_message_mock: MagicMock,
+        assign_roles_mock: MagicMock,
     ):
         """Test with LtiException."""
         error_message = 'Error message'
@@ -268,6 +279,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         render_login_prompt_mock.assert_not_called()
         authenticate_and_login_mock.assert_not_called()
         enroll_mock.assert_not_called()
+        assign_roles_mock.assert_not_called()
         get_launch_response_mock.assert_not_called()
         handle_ags_mock.assert_not_called()
         gettext_mock.assert_called_once_with(f'LTI 1.3 Resource Link Launch: {error_message}')
@@ -293,6 +305,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         get_resource_id_mock: MagicMock,
         validate_resource_link_message_mock: MagicMock,
         try_get_message_mock: MagicMock,
+        assign_roles_mock: MagicMock,
     ):
         """Test with ResourceLinkException."""
         error_message = 'Error message'
@@ -315,6 +328,7 @@ class TestResourceLinkLaunchViewPost(ResourceLinkLaunchViewBaseTestCase):
         render_login_prompt_mock.assert_not_called()
         authenticate_and_login_mock.assert_not_called()
         enroll_mock.assert_not_called()
+        assign_roles_mock.assert_not_called()
         get_launch_response_mock.assert_not_called()
         handle_ags_mock.assert_not_called()
         gettext_mock.assert_called_once_with(f'LTI 1.3 Resource Link Launch: {error_message}')
@@ -874,6 +888,81 @@ class TestResourceLinkLaunchViewEnroll(ResourceLinkLaunchViewBaseTestCase):
             self.view_class.enroll(self.user, COURSE_KEY)
 
         gettext_mock.assert_called_once_with('Course enrollment failed: ')
+
+
+@patch(f'{MODULE_PATH}.sync_course_role')
+@patch(f'{MODULE_PATH}.get_course_role')
+@patch(f'{MODULE_PATH}.get_roles_from_launch_data')
+class TestResourceLinkLaunchViewAssignRoles(ResourceLinkLaunchViewBaseTestCase):
+    """Test ResourceLinkLaunchView.assign_roles method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.claims = {'x': 'x'}
+        self.lti_tool_configuration = MagicMock()
+
+    def test_with_role_assignment_enabled(
+        self,
+        get_roles_from_launch_data_mock: MagicMock,
+        get_course_role_mock: MagicMock,
+        sync_course_role_mock: MagicMock,
+    ):
+        """Test with role assignment enabled on the tool configuration.
+
+        Args:
+            get_roles_from_launch_data_mock: Mocked get_roles_from_launch_data function.
+            get_course_role_mock: Mocked get_course_role function.
+            sync_course_role_mock: Mocked sync_course_role function.
+        """
+        self.lti_tool_configuration.enable_role_assignment = True
+
+        self.assertIsNone(
+            self.view_class.assign_roles(
+                self.user,
+                self.course_key,
+                self.claims,
+                self.lti_tool_configuration,
+            ),
+        )
+        get_roles_from_launch_data_mock.assert_called_once_with(self.claims)
+        self.lti_tool_configuration.get_role_mapping.assert_called_once_with()
+        get_course_role_mock.assert_called_once_with(
+            get_roles_from_launch_data_mock(),
+            self.lti_tool_configuration.get_role_mapping(),
+        )
+        sync_course_role_mock.assert_called_once_with(
+            self.user,
+            self.course_key,
+            get_course_role_mock(),
+        )
+
+    def test_with_role_assignment_disabled(
+        self,
+        get_roles_from_launch_data_mock: MagicMock,
+        get_course_role_mock: MagicMock,
+        sync_course_role_mock: MagicMock,
+    ):
+        """Test with role assignment disabled on the tool configuration.
+
+        Args:
+            get_roles_from_launch_data_mock: Mocked get_roles_from_launch_data function.
+            get_course_role_mock: Mocked get_course_role function.
+            sync_course_role_mock: Mocked sync_course_role function.
+        """
+        self.lti_tool_configuration.enable_role_assignment = False
+
+        self.assertIsNone(
+            self.view_class.assign_roles(
+                self.user,
+                self.course_key,
+                self.claims,
+                self.lti_tool_configuration,
+            ),
+        )
+        get_roles_from_launch_data_mock.assert_not_called()
+        get_course_role_mock.assert_not_called()
+        sync_course_role_mock.assert_not_called()
 
 
 @patch(f'{MODULE_PATH}.set_logged_in_cookies')

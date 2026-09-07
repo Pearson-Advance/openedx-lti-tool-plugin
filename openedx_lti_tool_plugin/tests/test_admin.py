@@ -94,10 +94,10 @@ class TestLtiToolConfigurationAdmin(TestCase):
         """Test instance attributes."""
         self.assertEqual(
             self.admin.list_display,
-            ('id', 'lti_tool_title', 'allowed_course_ids', 'user_provisioning_mode'),
+            ('id', 'lti_tool_title', 'allowed_course_ids', 'user_provisioning_mode', 'enable_role_assignment'),
         )
         self.assertEqual(self.admin.search_fields, ['id', 'lti_tool__title', 'allowed_course_ids'])
-        self.assertEqual(self.admin.list_filter, ('user_provisioning_mode',))
+        self.assertEqual(self.admin.list_filter, ('user_provisioning_mode', 'enable_role_assignment'))
 
     def test_lti_tool_title(self):
         """Test lti_tool_title method."""

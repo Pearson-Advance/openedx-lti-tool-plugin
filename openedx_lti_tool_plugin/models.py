@@ -22,6 +22,7 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.edxapp_wrapper.learning_sequences import course_context
 from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
+from openedx_lti_tool_plugin.resource_link_launch.roles import DEFAULT_ROLE_MAPPING, VALID_COURSE_ROLES
 from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
@@ -360,6 +361,35 @@ class LtiToolConfiguration(models.Model):
         """),
         ),
     )
+    enable_role_assignment = models.BooleanField(
+        default=False,
+        verbose_name=_('Enable role assignment'),
+        help_text=_(
+            'When enabled, the LTI roles claim from a launch is translated into '
+            'an Open edX course role for this tool, using the role mapping below. '
+            'Disabled by default: existing tools keep their current behavior '
+            '(every launched user is enrolled as a Student).',
+        ),
+    )
+    role_mapping = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name=_('Role mapping'),
+        help_text=mark_safe(
+            _("""
+        <p>Maps LTI role URIs to Open edX course roles. Leave empty to use the
+        plugin default mapping.</p>
+        <p>Keys are LTI role URIs, values are one of
+        <code>"instructor"</code>, <code>"staff"</code> or
+        <code>"student"</code>. Only course-context roles are honored; system
+        and institution roles are ignored. Example:</p>
+        <pre>{
+    "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor": "instructor",
+    "http://purl.imsglobal.org/vocab/lis/v2/membership#Administrator": "staff"
+}</pre>
+        """),
+        ),
+    )
 
     class Meta:
         """Meta options."""
@@ -397,6 +427,43 @@ class LtiToolConfiguration(models.Model):
             raise ValidationError({
                 'allowed_course_ids': _(f'Invalid course IDs: {invalid_course_ids}'),
             })
+
+        self.clean_role_mapping()
+
+    def clean_role_mapping(self):
+        """Validate the role_mapping field.
+
+        The field must be a dictionary whose values are valid Open edX
+        course-context role identifiers. This prevents mapping LTI roles to
+        arbitrary or system-wide roles.
+
+        Raises:
+            ValidationError: If role_mapping is not a dictionary or maps to an
+                invalid course role.
+
+        """
+        if not isinstance(self.role_mapping, dict):
+            raise ValidationError({
+                'role_mapping': _('Should be a JSON object mapping LTI role URIs to course roles.'),
+            })
+
+        invalid_roles = sorted(
+            set(self.role_mapping.values()) - set(VALID_COURSE_ROLES),
+        )
+        if invalid_roles:
+            raise ValidationError({
+                'role_mapping': _(f'Invalid course roles: {invalid_roles}. Valid roles: {VALID_COURSE_ROLES}.'),
+            })
+
+    def get_role_mapping(self) -> dict:
+        """Get the effective LTI role to course role mapping.
+
+        Returns:
+            The configured role_mapping, or the plugin DEFAULT_ROLE_MAPPING when
+            no per-tool mapping is set.
+
+        """
+        return self.role_mapping or DEFAULT_ROLE_MAPPING
 
     def is_course_id_allowed(self, course_id: str) -> bool:
         """Check if a course ID is allowed.

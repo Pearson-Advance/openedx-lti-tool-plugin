@@ -61,9 +61,9 @@ class LtiProfileAdmin(admin.ModelAdmin):
 class LtiToolConfigurationAdmin(admin.ModelAdmin):
     """Admin configuration for LtiToolConfiguration model."""
 
-    list_display = ('id', 'lti_tool_title', 'allowed_course_ids', 'user_provisioning_mode')
+    list_display = ('id', 'lti_tool_title', 'allowed_course_ids', 'user_provisioning_mode', 'enable_role_assignment')
     search_fields = ['id', 'lti_tool__title', 'allowed_course_ids']
-    list_filter = ('user_provisioning_mode',)
+    list_filter = ('user_provisioning_mode', 'enable_role_assignment')
 
     @admin.display(description='LTI Tool')
     def lti_tool_title(self, obj: LtiToolConfiguration) -> str:

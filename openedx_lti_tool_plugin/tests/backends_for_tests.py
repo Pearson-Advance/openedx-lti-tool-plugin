@@ -34,6 +34,16 @@ def course_enrollment_exception_backend():
     return Exception
 
 
+def course_staff_role_backend():
+    """Return CourseStaffRole mock function."""
+    return Mock()
+
+
+def course_instructor_role_backend():
+    """Return CourseInstructorRole mock function."""
+    return Mock()
+
+
 def problem_weighted_score_changed_backend():
     """Return PROBLEM_WEIGHTED_SCORE_CHANGED mock function."""
     return Mock()
