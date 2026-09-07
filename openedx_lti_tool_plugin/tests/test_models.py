@@ -15,11 +15,6 @@ from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.resource_link_launch.roles import (
-    COURSE_STAFF_ROLE,
-    DEFAULT_ROLE_MAPPING,
-    LTI_ROLE_INSTRUCTOR,
-)
 from openedx_lti_tool_plugin.models import (
     USERNAME_BASE_MAX_LENGTH,
     USERNAME_MAX_LENGTH,
@@ -28,6 +23,11 @@ from openedx_lti_tool_plugin.models import (
     CourseContextQuerySet,
     LtiProfile,
     LtiToolConfiguration,
+)
+from openedx_lti_tool_plugin.resource_link_launch.roles import (
+    COURSE_STAFF_ROLE,
+    DEFAULT_ROLE_MAPPING,
+    LTI_ROLE_INSTRUCTOR,
 )
 from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
