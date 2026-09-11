@@ -1,74 +1,149 @@
 Open edX LTI Tool Plugin
 ########################
 
-Open edX support for LTI 1.3 tool resource link launches and LTI Assignment and Grade Services.
+This repository provides an Open edX LMS plugin for integrating external learning platforms and tools through the LTI 1.3
+standard. It implements secure Resource Link launches, Deep Linking, and Assignment and Grade Services, enabling platforms
+to open Open edX course resources, add supported course links to their own environments, and exchange grades with the LMS.
+The plugin also provides the configuration, authentication, enrollment, and course access controls required to manage
+these integrations within Open edX.
 
 Getting Started
 ***************
 
-Installation on Open Edx Tutor
+Installation on Open edX Tutor
 ==============================
 
 This repository can be installed into Tutor by adding it as an extra pip requirement, rebuilding the openedx image,
-and applying the required LMS settings (feature flag + auth backend).
+applying the required LMS settings, and running the plugin migrations. These instructions apply to Tutor local and
+production environments.
 
-**Prerequisites**
-
-- A working Tutor environment (local or production).
-- Ability to rebuild the openedx image.
-
-1. Add the package to Tutor extra pip requirements
-Tutor supports installing additional Python packages into the Open edX image via OPENEDX_EXTRA_PIP_REQUIREMENTS.
+1. Add the package to Tutor's extra pip requirements. Pinning to a tag or commit is recommended for reproducible builds:
 
 .. code-block:: bash
-
-  # Prefer pinning to a tag/commit for reproducible builds
 
   tutor config save --append OPENEDX_EXTRA_PIP_REQUIREMENTS=git+https://github.com/Pearson-Advance/openedx-lti-tool-plugin.git@<TAG_OR_COMMIT>
 
-2. Rebuild the Open edX image and launch the environment.
+2. Add the following production LMS settings to a new or existing Tutor plugin. See Tutor's
+   `plugin development tutorial <https://docs.tutor.edly.io/tutorials/plugin.html>`_ for instructions on creating a
+   plugin:
+
+.. code-block:: python
+
+  from tutor import hooks
+
+  hooks.Filters.ENV_PATCHES.add_item(
+      (
+          'openedx-lms-production-settings',
+          'OLTITP_ENABLE_LTI_TOOL = True',
+          'AUTHENTICATION_BACKENDS.append("openedx_lti_tool_plugin.auth.LtiAuthenticationBackend")',
+      )
+  )
+
+3. If the plugin is not already enabled, enable it using its plugin name. Then regenerate the Tutor environment. Run ``tutor config save`` again after every change to the plugin settings:
 
 .. code-block:: bash
 
+  tutor plugins enable <PLUGIN_NAME>
+  tutor config save
+
+4. Rebuild the Open edX image and launch the environment:
+
+.. code-block:: bash
+
+  tutor images build openedx
   tutor local launch
 
-3. Set the lms setting OLTITP_ENABLE_LTI_TOOL to True and add LtiAuthenticationBackend to AUTHENTICATION_BACKENDS:
+5. Apply the plugin's Django migrations, then restart the LMS:
 
 .. code-block:: bash
 
-  echo 'OLTITP_ENABLE_LTI_TOOL=True' >> ~env/apps/openedx/config/lms.env.yml
-  echo 'AUTHENTICATION_BACKENDS.append('openedx_lti_tool_plugin.auth.LtiAuthenticationBackend')' >> ~env/apps/openedx/config/lms.env.yml
-
-4. Restart the LMS.
-
-.. code-block:: bash
-
+  tutor local run lms ./manage.py lms migrate openedx_lti_tool_plugin
   tutor local restart lms
 
 Development Setup
 =================
 
-1. Clone this repository:
+Use Tutor's development environment to bind-mount the repository into Open edX. Python source changes are then available
+inside the LMS container without rebuilding the image.
+
+When testing with an external LTI platform, the development LMS must be reachable from that platform. You can expose it
+through a tunneling tool such as `ngrok <https://ngrok.com/>`_ or `cloudflared <https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/>`_.
+You can also expose it through a reverse proxy. Both the tunneling tool and the reverse proxy must preserve the
+development environment's URL structure, including the LTI endpoints. The Tutor/Open edX host and URL settings must be
+configured so that the URLs advertised to the LTI platform match the public tunnel or proxy URLs. If the URL structure
+is changed, the Tutor deployment platform requires additional custom configuration that is outside the scope of this README.
+Alternatively, you can test without exposing the LMS publicly by using another LMS on the same network as the deployed
+Open edX development platform, provided that it can reach the development LMS.
+
+For local testing without HTTPS, some LTI platforms may not be able to complete iframe-based workflows because browsers
+enforce secure-content and cookie restrictions. For example, Moodle's content selection feature may require the LMS to
+be available over HTTPS.
+
+1. Clone this repository and enter it:
 
 .. code-block:: bash
 
   git clone git@github.com:Pearson-Advance/openedx-lti-tool-plugin.git
-
-2. Set up a virtualenv:
-
-.. code-block:: bash
-
   cd openedx-lti-tool-plugin
-  virtualenv venv
-  source venv/bin/activate
 
-3. Install development dependencies:
+2. Create a virtual environment and install the development dependencies. This environment is used for tests and code
+   quality checks on the host; Tutor uses the package mounted into its containers.
 
 .. code-block:: bash
 
-  make dev-requirements
+  python3 -m venv venv
+  source venv/bin/activate
+  make requirements
 
-4. Run code tests and code quality tests:
+3. Register the repository as a Tutor mount and confirm that Tutor recognizes it for the ``openedx-dev`` image and LMS
+   services:
+
+.. code-block:: bash
+
+  tutor mounts add "$(pwd)"
+  tutor mounts list
+
+The mount list should include an ``openedx-dev`` build mount and an LMS compose mount for this repository.
+
+4. Add the following development LMS settings to a new or existing Tutor plugin. See Tutor's
+   `plugin development tutorial <https://docs.tutor.edly.io/tutorials/plugin.html>`_ for instructions on creating a
+   plugin:
+
+.. code-block:: python
+
+  from tutor import hooks
+
+  hooks.Filters.ENV_PATCHES.add_item(
+      (
+          'openedx-lms-development-settings',
+          'OLTITP_ENABLE_LTI_TOOL = True',
+          'AUTHENTICATION_BACKENDS.append("openedx_lti_tool_plugin.auth.LtiAuthenticationBackend")',
+      )
+  )
+
+5. If the plugin is not already enabled, enable it using its plugin name. Then regenerate the Tutor environment. Run ``tutor config save`` again after every change to the plugin settings:
+
+.. code-block:: bash
+
+  tutor plugins enable <PLUGIN_NAME>
+  tutor config save
+
+6. Build the development image and launch Tutor's development environment. The first build installs the mounted package
+   in editable mode:
+
+.. code-block:: bash
+
+  tutor images build openedx-dev
+  tutor dev launch
+
+7. Apply the plugin's Django migrations, then restart the development LMS:
+
+.. code-block:: bash
+
+  tutor dev run lms ./manage.py lms migrate openedx_lti_tool_plugin
+  tutor dev restart lms
+
+8. Run the tests and code quality checks from the activated host virtual environment:
 
 .. code-block:: bash
 
@@ -77,17 +152,38 @@ Development Setup
 LTI 1.3 Resource Link Launch Setup
 ==================================
 
-1. (Optional) If the LTI tool is on a local environment, expose the LMS to an external domain (Example: `ngrok <https://ngrok.com/>`_, `Cloudflare Tunnel <https://www.cloudflare.com/products/tunnel/>`).
-2. Go to LMS Admin > PyLTI 1.3 Tool Config > Lti 1.3 tools.
-3. Create a new LTI 1.3 tool configuration with all your platform details.
-4. Go to your LTI platform and set the login and keyset URL of the LTI tool:
-  - Login URL: https://lms-address.com/openedx_lti_tool_plugin/1.3/login
-  - Keyset URL: https://lms-address.com/openedx_lti_tool_plugin/1.3/pub/jwks
-5. Setup the tool link URL:
-  - Course Unit/Problem URL: https://lms-address.com/openedx_lti_tool_plugin/1.3/launch/course-id/unit-or-problem-id
-  - Complete Course URL (This requires the "Complete Course Launch" feature): https://lms-address.com/openedx_lti_tool_plugin/1.3/launch/course-id
-6. Execute an LTI 1.3 resource launch from the LTI platform.
-7. The LTI 1.3 resource launch should successfully take you to the requested content.
+1. Go to LMS Admin > PyLTI 1.3 Tool Config > Lti 1.3 tools.
+2. Create a new LTI 1.3 tool configuration with all your platform details.
+3. Go to your LTI platform and set the login and keyset URL of the LTI tool:
+
+  - Login URL: https://lms-base/openedx_lti_tool_plugin/1.3/login
+  - Keyset URL: https://lms-base/openedx_lti_tool_plugin/1.3/pub/jwks
+
+4. Set the Resource Link launch URL on the platform to:
+
+  - Resource Link URL: https://lms-base/openedx_lti_tool_plugin/1.3/launch/
+
+5. Add ``resourceId=RESOURCE_ID`` to the launch's LTI custom parameters. Replace ``RESOURCE_ID`` with the complete Open edX course key or the usage key of the unit or problem to launch. Launching a complete course requires the "Complete Course Launch" feature.
+6. Execute an LTI 1.3 Resource Link launch from the platform.
+7. The launch should take the user to the resource identified by ``resourceId``.
+
+LTI 1.3 Deep Linking Compatibility
+==================================
+
+This LTI tool supports Deep Linking, allowing users to select Open edX content and add the resulting resource links to
+an LTI platform.
+
+Currently, the Deep Linking service only supports selecting complete courses. Selecting individual units or problems
+from the LMS is not supported.
+
+1. Configure the LTI tool on the platform using the login and keyset URLs described above.
+2. Set the tool's Deep Linking URL on the platform to:
+
+  - Deep Linking URL: https://lms-base/openedx_lti_tool_plugin/1.3/deep_linking/
+
+3. Initiate an ``LtiDeepLinkingRequest`` from the platform.
+4. Select the Open edX content to add to the platform and submit the selection.
+5. The tool returns an ``LtiDeepLinkingResponse`` containing the selected resource links to the platform.
 
 LTI 1.3 Assignment and Grade Services Compatibility
 ===================================================
@@ -133,9 +229,13 @@ Complete Course Launch
 By default, the LTI tool doesn't support LTI 1.3 resource launches over a complete Open edX course, with this feature, you can enable resource launches over a whole Open edX course, this will redirect the launch user to the Open edX learning MFE for the requested course: Follow these next steps to set this feature:
 
 1. Enable the Django Waffle switch: `openedx_lti_tool_plugin.allow_complete_course_launch`.
-2. Setup an LTI 1.3 resource launch URL to a course (Example: http://localhost:18000/openedx_lti_tool_plugin/course/course-v1:ORG+RUN)
-3. Execute the LTI 1.3 launch on the platform.
-4. The launch should redirect you to the course in the Open edX learning MFE.
+2. Set the Resource Link launch URL on the platform to:
+
+  - Resource Link URL: https://lms-base/openedx_lti_tool_plugin/1.3/launch/
+
+3. Add ``resourceId=course-v1:ORG+RUN`` to the launch's LTI custom parameters, replacing ``course-v1:ORG+RUN`` with the course key to launch.
+4. Execute the LTI 1.3 Resource Link launch on the platform.
+5. The launch should redirect the user to the course in the Open edX learning MFE.
 
 Save PII Data
 =============
@@ -174,4 +274,4 @@ License
 
 The code in this repository is licensed under the Apache License 2.0 .
 
-Please see `LICENSE.txt <LICENSE.txt>`_ for details.
+Please see `LICENSE <LICENSE>`_ for details.
