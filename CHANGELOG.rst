@@ -16,6 +16,21 @@ Unreleased
 
 *
 
+1.1.0 - 2026-10-07
+********************
+
+Added
+=====
+
+- Add ``OLTITP_LOGIN_PROMPT_TEMPLATE`` to customize the LTI resource-link
+  login prompt template through LMS settings or site configuration.
+
+Changed
+=======
+
+- Expand documentation for Tutor installation, configuration, migrations,
+  and supported LTI workflows.
+
 1.0.0 - 2026-07-09
 ********************
 
@@ -338,7 +353,8 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v1.0.0...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v1.0.0
 [0.4.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.0
