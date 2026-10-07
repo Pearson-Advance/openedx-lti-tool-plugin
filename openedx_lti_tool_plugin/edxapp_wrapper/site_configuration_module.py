@@ -7,5 +7,5 @@ from django.conf import settings
 def configuration_helpers():
     """Return configuration_helpers function."""
     return import_module(
-        settings.OLTITP_SITE_CONFIGURATION_BACKEND
+        settings.OLTITP_SITE_CONFIGURATION_BACKEND,
     ).configuration_helpers_backend()

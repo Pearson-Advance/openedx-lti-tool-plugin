@@ -7,10 +7,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
-from .common import *  # pylint: disable=unused-wildcard-import,wildcard-import
+from openedx_lti_tool_plugin.settings.common import *  # pylint: disable=unused-wildcard-import,wildcard-import
 
-# Django settings
-DEBUG = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -82,6 +80,7 @@ OLTITP_MODULESTORE_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_SAFE_SESSIONS_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_SITE_CONFIGURATION_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_STUDENT_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
+OLTITP_ROLES_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_GRADES_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_USER_AUTHN_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH
 OLTITP_LEARNING_SEQUENCES_BACKEND = OLTITP_TEST_BACKEND_MODULE_PATH

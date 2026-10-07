@@ -9,13 +9,26 @@ import ddt
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db.models import signals
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from pylti1p3.contrib.django.lti1p3_tool_config.models import LtiTool, LtiToolKey
 
 from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_config
-from openedx_lti_tool_plugin.models import CourseContext, CourseContextQuerySet, LtiProfile, LtiToolConfiguration
+from openedx_lti_tool_plugin.models import (
+    USERNAME_BASE_MAX_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_SOURCE_EMAIL,
+    CourseContext,
+    CourseContextQuerySet,
+    LtiProfile,
+    LtiToolConfiguration,
+)
+from openedx_lti_tool_plugin.resource_link_launch.roles import (
+    COURSE_STAFF_ROLE,
+    DEFAULT_ROLE_MAPPING,
+    LTI_ROLE_INSTRUCTOR,
+)
 from openedx_lti_tool_plugin.tests import AUD, ISS, ORG, SUB
 
 MODULE_PATH = 'openedx_lti_tool_plugin.models'
@@ -42,7 +55,7 @@ class TestLtiProfile(TestCase):
             platform_id=ISS,
             client_id=AUD,
             subject_id=SUB,
-            pii=self.pii
+            pii=self.pii,
         )
         self.user = get_user_model().objects.create(
             email=EMAIL,
@@ -361,32 +374,97 @@ class TestLtiProfile(TestCase):
 
         self.assertEqual(self.lti_profile.name, name_return)
 
+    def test_username_from_user_field(self):
+        """Test username returns the linked user's username."""
+        self.lti_profile.user = self.user
+
+        self.assertEqual(self.lti_profile.username, self.user.username)
+
+    @patch.object(LtiProfile, 'available_username', return_value='generated')
+    @patch.object(LtiProfile, 'username_base', return_value='base')
+    def test_username_generates_from_base(
+        self,
+        username_base_mock: MagicMock,
+        available_username_mock: MagicMock,
+    ):
+        """Test username generates from the normalized base without a user."""
+        self.lti_profile.user = None
+
+        self.assertEqual(self.lti_profile.username, 'generated')
+        username_base_mock.assert_called_once_with()
+        available_username_mock.assert_called_once_with('base')
+
     @ddt.data(
-        (False, {}, ''),
-        (False, {'name': ''}, ''),
-        (
-            False,
-            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
-            f'{UNICODE_USERNAME_GIVEN_NAME}.',
-        ),
-        (True, {}, ''),
-        (
-            True,
-            {'name': f'{GIVEN_NAME_LARGER} {MIDDLE_NAME} {FAMILY_NAME}'},
-            '',
-        ),
+        ({'name': 'Alexander Hamilton'}, 'alexanderhamilton'),
+        ({'name': 'a_b-c+d'}, 'abcd'),
+        ({'name': 'x' * 40}, 'x' * USERNAME_BASE_MAX_LENGTH),
+        ({}, ''),
     )
     @ddt.unpack
-    def test_username_property(self, has_user: bool, name_data: dict, name_return: str):
-        """Test username property."""
-        self.lti_profile.pii = name_data
+    def test_username_base_name_source(self, pii: dict, expected: str):
+        """Test username_base with the default name source."""
+        self.lti_profile.pii = pii
 
-        if not has_user:
-            self.lti_profile.user = None
+        self.assertEqual(self.lti_profile.username_base(), expected)
+
+    @override_settings(OLTITP_USERNAME_BASE_SOURCE=USERNAME_SOURCE_EMAIL)
+    @ddt.data(
+        ({'email': 'j.smith@example.com'}, 'jsmith'),
+        ({'email': 'John.Smith@example.com'}, 'johnsmith'),
+        ({'email': f'{"x" * 40}@example.com'}, 'x' * USERNAME_BASE_MAX_LENGTH),
+    )
+    @ddt.unpack
+    def test_username_base_email_source(self, pii: dict, expected: str):
+        """Test username_base with the email source."""
+        self.lti_profile.pii = pii
+
+        self.assertEqual(self.lti_profile.username_base(), expected)
+
+    @override_settings(OLTITP_USERNAME_BASE_SOURCE=USERNAME_SOURCE_EMAIL)
+    def test_username_base_email_source_falls_back_to_name(self):
+        """Test username_base falls back to name when the email source is empty."""
+        self.lti_profile.pii = {'name': 'Alexander Hamilton'}
+
+        self.assertEqual(self.lti_profile.username_base(), 'alexanderhamilton')
+
+    def test_username_base_name_source_falls_back_to_email(self):
+        """Test username_base falls back to email when the name source is empty."""
+        self.lti_profile.pii = {'email': 'j.smith@example.com'}
+
+        self.assertEqual(self.lti_profile.username_base(), 'jsmith')
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_available_username_returns_clean_base_when_free(self, filter_mock: MagicMock):
+        """Test available_username returns the clean base when it is free."""
+        filter_mock.return_value.exists.return_value = False
+
+        self.assertEqual(self.lti_profile.available_username('jsmith'), 'jsmith')
+        filter_mock.assert_called_once_with(username__iexact='jsmith')
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_available_username_appends_short_uuid_on_collision(self, filter_mock: MagicMock):
+        """Test available_username appends the short UUID when the base is taken."""
+        filter_mock.return_value.exists.return_value = True
 
         self.assertEqual(
-            self.lti_profile.username,
-            f'{name_return}{self.lti_profile.short_uuid}',
+            self.lti_profile.available_username('jsmith'),
+            f'jsmith.{self.lti_profile.short_uuid}',
+        )
+
+    @patch(f'{MODULE_PATH}.User.objects.filter')
+    def test_available_username_within_max_length_on_collision(self, filter_mock: MagicMock):
+        """Test collision username stays within the Open edX max length."""
+        filter_mock.return_value.exists.return_value = True
+
+        result = self.lti_profile.available_username('a' * USERNAME_BASE_MAX_LENGTH)
+
+        self.assertLessEqual(len(result), USERNAME_MAX_LENGTH)
+
+    def test_available_username_returns_short_uuid_without_base(self):
+        """Test available_username returns the short UUID when no base is available."""
+        self.assertEqual(
+            self.lti_profile.available_username(''),
+            self.lti_profile.short_uuid,
         )
 
     def test_email_property(self):
@@ -449,6 +527,7 @@ class TestLtiToolConfiguration(TestCase):
         self.allowed_course_ids = ['course-v1:x+x+x', 'course-v1:x+x+y']
         self.tool_configuration = LtiToolConfiguration.objects.get(lti_tool=self.lti_tool)
 
+    @patch.object(LtiToolConfiguration, 'clean_role_mapping')
     @patch.object(CourseKey, 'from_string')
     @patch('openedx_lti_tool_plugin.models.isinstance')
     @patch('openedx_lti_tool_plugin.models.json.loads')
@@ -457,6 +536,7 @@ class TestLtiToolConfiguration(TestCase):
         json_loads_mock: MagicMock,
         isinstance_mock: MagicMock,
         course_key_mock: MagicMock,
+        clean_role_mapping_mock: MagicMock,
     ):
         """Test clean method with valid allowed_course_ids field.
 
@@ -464,6 +544,7 @@ class TestLtiToolConfiguration(TestCase):
             json_loads_mock: Mocked json.loads function.
             isinstance_mock: Mocked isinstance function.
             course_key_mock: Mocked CourseKey from_string method.
+            clean_role_mapping_mock: Mocked clean_role_mapping method.
         """
         json_loads_mock.return_value = self.allowed_course_ids
 
@@ -472,6 +553,7 @@ class TestLtiToolConfiguration(TestCase):
         json_loads_mock.assert_called_once_with(self.tool_configuration.allowed_course_ids)
         isinstance_mock.assert_called_once_with(json_loads_mock.return_value, list)
         course_key_mock.assert_has_calls(map(call, self.allowed_course_ids))
+        clean_role_mapping_mock.assert_called_once_with()
 
     @patch('openedx_lti_tool_plugin.models._', return_value='')
     @patch('openedx_lti_tool_plugin.models.json.loads', side_effect=ValueError())
@@ -608,20 +690,73 @@ class TestLtiToolConfiguration(TestCase):
         """Test user_provisioning_mode choices."""
         self.assertEqual(
             self.tool_configuration.user_provisioning_mode,
-            LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY
+            LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY,
         )
 
         self.tool_configuration.user_provisioning_mode = LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
         self.tool_configuration.save()
         self.assertEqual(
             self.tool_configuration.user_provisioning_mode,
-            LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW
+            LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW,
         )
 
         choices = [choice[0] for choice in LtiToolConfiguration.UserProvisioningMode.choices]
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.NEW_ACCOUNTS_ONLY.value, choices)
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_AND_NEW.value, choices)
         self.assertIn(LtiToolConfiguration.UserProvisioningMode.EXISTING_ONLY.value, choices)
+
+    def test_clean_role_mapping_with_valid_mapping(self):
+        """Test clean_role_mapping method with a valid role mapping."""
+        self.tool_configuration.role_mapping = {LTI_ROLE_INSTRUCTOR: COURSE_STAFF_ROLE}
+
+        self.assertIsNone(self.tool_configuration.clean_role_mapping())
+
+    def test_clean_role_mapping_with_empty_mapping(self):
+        """Test clean_role_mapping method with an empty role mapping."""
+        self.tool_configuration.role_mapping = {}
+
+        self.assertIsNone(self.tool_configuration.clean_role_mapping())
+
+    @patch(f'{MODULE_PATH}._', return_value='')
+    def test_clean_role_mapping_with_invalid_type(self, gettext_mock: MagicMock):
+        """Test clean_role_mapping method with a non-dictionary role mapping.
+
+        Args:
+            gettext_mock: Mocked gettext function.
+        """
+        self.tool_configuration.role_mapping = ['not', 'a', 'dict']
+
+        with self.assertRaises(ValidationError) as cm:
+            self.tool_configuration.clean_role_mapping()
+
+        self.assertIn('role_mapping', cm.exception.message_dict)
+
+    @patch(f'{MODULE_PATH}._', return_value='')
+    def test_clean_role_mapping_with_invalid_role(self, gettext_mock: MagicMock):
+        """Test clean_role_mapping method with an invalid course role value.
+
+        Args:
+            gettext_mock: Mocked gettext function.
+        """
+        self.tool_configuration.role_mapping = {LTI_ROLE_INSTRUCTOR: 'superuser'}
+
+        with self.assertRaises(ValidationError) as cm:
+            self.tool_configuration.clean_role_mapping()
+
+        self.assertIn('role_mapping', cm.exception.message_dict)
+
+    def test_get_role_mapping_with_mapping(self):
+        """Test get_role_mapping method with a configured role mapping."""
+        role_mapping = {LTI_ROLE_INSTRUCTOR: COURSE_STAFF_ROLE}
+        self.tool_configuration.role_mapping = role_mapping
+
+        self.assertEqual(self.tool_configuration.get_role_mapping(), role_mapping)
+
+    def test_get_role_mapping_without_mapping(self):
+        """Test get_role_mapping method without a configured role mapping."""
+        self.tool_configuration.role_mapping = {}
+
+        self.assertEqual(self.tool_configuration.get_role_mapping(), DEFAULT_ROLE_MAPPING)
 
 
 @patch(f'{MODULE_PATH}.COURSE_ACCESS_CONFIGURATION')

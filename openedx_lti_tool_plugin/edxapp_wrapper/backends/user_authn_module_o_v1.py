@@ -1,6 +1,5 @@
 """user_authn module backend (olive v1)."""
-from openedx.core.djangoapps.user_authn.cookies import \
-    set_logged_in_cookies  # type: ignore # pylint: disable=import-error
+from openedx.core.djangoapps.user_authn.cookies import set_logged_in_cookies  # pylint: disable=import-error
 
 
 def set_logged_in_cookies_backend(*args: tuple, **kwargs: dict):

@@ -32,6 +32,11 @@ from openedx_lti_tool_plugin.http import LoggedHttpResponseBadRequest
 from openedx_lti_tool_plugin.models import LtiProfile, LtiToolConfiguration, UserT
 from openedx_lti_tool_plugin.resource_link_launch.ags.models import LtiGradedResource
 from openedx_lti_tool_plugin.resource_link_launch.exceptions import ResourceLinkException
+from openedx_lti_tool_plugin.resource_link_launch.roles import (
+    get_course_role,
+    get_roles_from_launch_data,
+    sync_course_role,
+)
 from openedx_lti_tool_plugin.resource_link_launch.utils import validate_resource_link_message
 from openedx_lti_tool_plugin.utils import get_identity_claims
 from openedx_lti_tool_plugin.views import LTIToolView
@@ -146,7 +151,10 @@ class ResourceLinkLaunchView(LTIToolView):
             user = self.authenticate_and_login(request, iss, aud, sub)
 
             # Enroll User.
-            self.enroll(request, user, course_key)
+            self.enroll(user, course_key)
+
+            # Synchronize course role from the LTI roles claim.
+            self.assign_roles(user, course_key, claims, lti_tool_configuration)
 
             # Get resource link response.
             response = self.get_launch_response(
@@ -229,8 +237,9 @@ class ResourceLinkLaunchView(LTIToolView):
             pass
 
         try:
-            usage_key = UsageKey.from_string(resource_id)
-            course_key = usage_key.course_key
+            _usage_key = UsageKey.from_string(resource_id)
+            course_key = _usage_key.course_key
+            usage_key = _usage_key.map_into_course(course_key)
         except InvalidKeyError:
             pass
 
@@ -251,7 +260,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         Raises:
             ResourceLinkException: If course_key is not found or
-                if usage_key.block_type is chapter, sequential or course.
+                if usage_key.block_type is chapter or course.
 
         """
         if not course_key:
@@ -261,7 +270,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         if (
             usage_key
-            and usage_key.block_type in ['chapter', 'sequential', 'course']
+            and usage_key.block_type in ['chapter', 'course']
         ):
             raise ResourceLinkException(
                 _(f'Invalid UsageKey XBlock type: {usage_key.block_type}'),
@@ -490,11 +499,10 @@ class ResourceLinkLaunchView(LTIToolView):
         return user
 
     @staticmethod
-    def enroll(request: HttpRequest, user: UserT, course_key: str):
+    def enroll(user: UserT, course_key: str):
         """Enroll User to Course.
 
         Args:
-            request: HTTPRequest object.
             user: User instance.
             course_key: Course key string.
 
@@ -508,10 +516,41 @@ class ResourceLinkLaunchView(LTIToolView):
                     user=user,
                     course_key=course_key,
                     check_access=True,
-                    request=request,
                 )
         except course_enrollment_exception() as exc:
             raise ResourceLinkException(_(f'Course enrollment failed: {exc}')) from exc
+
+    @staticmethod
+    def assign_roles(
+        user: UserT,
+        course_key: CourseKey,
+        claims: dict,
+        lti_tool_configuration: LtiToolConfiguration,
+    ):
+        """Synchronize an Open edX course role from the LTI roles claim.
+
+        This honors the trust boundary: the roles claim is only translated into
+        an Open edX course role when the LtiToolConfiguration for the launching
+        tool has role assignment explicitly enabled. Otherwise the launch keeps
+        its default behavior (the User is enrolled as a Student).
+
+        When enabled, the managed course role is reconciled on every launch, so
+        a platform-side role change (e.g. staff -> student) is reflected instead
+        of leaving a stale grant.
+
+        Args:
+            user: User instance.
+            course_key: CourseKey object.
+            claims: Launch data claims dictionary.
+            lti_tool_configuration: LtiToolConfiguration instance.
+
+        """
+        if not lti_tool_configuration.enable_role_assignment:
+            return
+
+        lti_roles = get_roles_from_launch_data(claims)
+        course_role = get_course_role(lti_roles, lti_tool_configuration.get_role_mapping())
+        sync_course_role(user, course_key, course_role)
 
     def get_launch_response(
         self,
@@ -540,7 +579,7 @@ class ResourceLinkLaunchView(LTIToolView):
         response = None
 
         if usage_key:
-            response = redirect('render_xblock', str(usage_key.course_key))
+            response = redirect('render_xblock', str(usage_key))
         else:
             response = self.get_course_launch_response(str(course_key))
 
@@ -565,7 +604,7 @@ class ResourceLinkLaunchView(LTIToolView):
 
         return redirect(
             f'{configuration_helpers().get_value("LEARNING_MICROFRONTEND_URL", settings.LEARNING_MICROFRONTEND_URL)}'
-            f'/course/{course_id}'
+            f'/course/{course_id}',
         )
 
     @staticmethod

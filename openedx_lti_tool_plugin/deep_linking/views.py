@@ -157,7 +157,7 @@ class DeepLinkingFormView(LTIToolView):
             return HttpResponse(
                 message.get_deep_link().output_response_form(
                     form.cleaned_data.get('deep_link_resources', []),
-                )
+                ),
             )
         except (LtiException, DeepLinkingException) as exc:
             return self.http_response_error(exc)

@@ -60,18 +60,18 @@ def publish_course_score(
     }
 
     if not is_plugin_enabled():
-        log.info(f'Plugin is disabled: {log_extra}')
+        log.info('Plugin is disabled: %s', log_extra)
         return
 
     if not getattr(user, 'openedx_lti_tool_plugin_lti_profile', None):
-        log.info(f'LtiProfile not found for user: {log_extra}')
+        log.info('LtiProfile not found for user: %s', log_extra)
         return
 
     lti_graded_resources = LtiGradedResource.objects.all_from_user_id(
         user_id=user.id,
         context_key=course_key,
     )
-    log.info(f'Sending course LTI AGS score publish request(s): {log_extra}')
+    log.info('Sending course LTI AGS score publish request(s): %s', log_extra)
 
     for lti_graded_resource in lti_graded_resources:
         lti_graded_resource.publish_score(

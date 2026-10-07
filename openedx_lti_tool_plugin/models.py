@@ -5,6 +5,7 @@ import uuid
 from typing import TypeVar
 
 import shortuuid
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -22,11 +23,21 @@ from openedx_lti_tool_plugin.apps import OpenEdxLtiToolPluginConfig as app_confi
 from openedx_lti_tool_plugin.edxapp_wrapper.learning_sequences import course_context
 from openedx_lti_tool_plugin.edxapp_wrapper.site_configuration_module import configuration_helpers
 from openedx_lti_tool_plugin.edxapp_wrapper.student_module import user_profile
+from openedx_lti_tool_plugin.resource_link_launch.roles import DEFAULT_ROLE_MAPPING, VALID_COURSE_ROLES
 from openedx_lti_tool_plugin.waffle import COURSE_ACCESS_CONFIGURATION
 
 UserT = TypeVar('UserT', bound=AbstractBaseUser)
 User = get_user_model()
 UserProfile = user_profile()
+
+# Maximum length allowed for an Open edX username.
+USERNAME_MAX_LENGTH = 30
+# Maximum length for the readable username base, leaving room for a
+# '.<short_uuid>' collision suffix within USERNAME_MAX_LENGTH.
+USERNAME_BASE_MAX_LENGTH = 20
+# Username base sources for the OLTITP_USERNAME_BASE_SOURCE setting.
+USERNAME_SOURCE_NAME = 'name'
+USERNAME_SOURCE_EMAIL = 'email'
 
 
 class LtiProfile(models.Model):
@@ -159,21 +170,86 @@ class LtiProfile(models.Model):
 
     @property
     def username(self) -> str:
-        """str: Username."""
+        """str: Username.
+
+        The username is generated from a readable base derived from the LTI
+        payload identity. The OLTITP_USERNAME_BASE_SOURCE setting selects the
+        base source ('name' (default) or 'email'); when the chosen source is
+        empty, the remaining source is used as a fallback. The base is
+        normalized to Open edX username constraints (lowercase, alphanumeric,
+        truncated to USERNAME_BASE_MAX_LENGTH). When the base is already taken
+        (case-insensitive), a short UUID suffix is appended; when no base is
+        available, the short UUID is used on its own.
+
+        Returns:
+            Generated username string.
+
+        """
         # Return from user field.
         if getattr(self, 'user', None):
             return self.user.username
 
-        try:
-            # Return using name and short_uuid.
-            name = self.name.split()
-            name = name[0][:8].lower()
-            name = re.sub(r'[\W_]+', '', name)
+        return self.available_username(self.username_base())
 
-            return f'{name}.{self.short_uuid}'
-        except IndexError:
-            # Return using short_uuid.
-            return f'{self.short_uuid}'
+    def username_base(self) -> str:
+        """Build a normalized username base from the configured source.
+
+        The OLTITP_USERNAME_BASE_SOURCE setting selects the primary source; the
+        remaining source is used as a fallback when the primary one is empty.
+        The result is lowercased, stripped of non-alphanumeric characters (which
+        also collapses whitespace) and truncated to USERNAME_BASE_MAX_LENGTH.
+
+        Returns:
+            Normalized username base, or an empty string when no source is
+            available.
+
+        """
+        source = getattr(
+            settings,
+            'OLTITP_USERNAME_BASE_SOURCE',
+            USERNAME_SOURCE_NAME,
+        )
+        pii_email = self.pii_email
+        raw_sources = {
+            USERNAME_SOURCE_NAME: self.name,
+            USERNAME_SOURCE_EMAIL: pii_email.split('@')[0] if pii_email else '',
+        }
+
+        # Try the configured source first, then the remaining source.
+        ordered = [source] + [key for key in raw_sources if key != source]
+
+        for key in ordered:
+            base = re.sub(r'[\W_]+', '', raw_sources.get(key, '')).lower()
+            base = base[:USERNAME_BASE_MAX_LENGTH]
+
+            if base:
+                return base
+
+        return ''
+
+    def available_username(self, base: str) -> str:
+        """Return an available username for a normalized base.
+
+        Uses the clean base when it is free; appends a '.<short_uuid>' suffix
+        when the base is already taken (case-insensitive). Falls back to the
+        short UUID on its own when no base is available.
+
+        Args:
+            base: Normalized username base.
+
+        Returns:
+            An available username string.
+
+        """
+        # No usable base: use the short UUID on its own (legacy fallback).
+        if not base:
+            return self.short_uuid
+
+        # Append the short UUID on collision; keep the clean base otherwise.
+        if User.objects.filter(username__iexact=base).exists():
+            return f'{base}.{self.short_uuid}'
+
+        return base
 
     @property
     def user_profile_field_values(self) -> dict:
@@ -217,7 +293,7 @@ class LtiProfile(models.Model):
 
         """
         return User.objects.filter(
-            Q(email=email) | Q(username=username)
+            Q(email=email) | Q(username=username),
         ).exclude(
             email=email,
             username=username,
@@ -343,7 +419,8 @@ class LtiToolConfiguration(models.Model):
         choices=UserProvisioningMode.choices,
         default=UserProvisioningMode.NEW_ACCOUNTS_ONLY,
         verbose_name=_('User Provisioning Mode'),
-        help_text=mark_safe(_("""
+        help_text=mark_safe(
+            _("""
         <p>Determines how user accounts are provisioned during an LTI launch:</p>
         <ul>
           <li><strong>New accounts only (automatic)</strong> -
@@ -356,7 +433,37 @@ class LtiToolConfiguration(models.Model):
             Only existing accounts may be used. Without an existing account,
             users cannot access shared resources.</li>
         </ul>
-        """)),
+        """),
+        ),
+    )
+    enable_role_assignment = models.BooleanField(
+        default=False,
+        verbose_name=_('Enable role assignment'),
+        help_text=_(
+            'When enabled, the LTI roles claim from a launch is translated into '
+            'an Open edX course role for this tool, using the role mapping below. '
+            'Disabled by default: existing tools keep their current behavior '
+            '(every launched user is enrolled as a Student).',
+        ),
+    )
+    role_mapping = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name=_('Role mapping'),
+        help_text=mark_safe(
+            _("""
+        <p>Maps LTI role URIs to Open edX course roles. Leave empty to use the
+        plugin default mapping.</p>
+        <p>Keys are LTI role URIs, values are one of
+        <code>"instructor"</code>, <code>"staff"</code> or
+        <code>"student"</code>. Only course-context roles are honored; system
+        and institution roles are ignored. Example:</p>
+        <pre>{
+    "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor": "instructor",
+    "http://purl.imsglobal.org/vocab/lis/v2/membership#Administrator": "staff"
+}</pre>
+        """),
+        ),
     )
 
     class Meta:
@@ -395,6 +502,43 @@ class LtiToolConfiguration(models.Model):
             raise ValidationError({
                 'allowed_course_ids': _(f'Invalid course IDs: {invalid_course_ids}'),
             })
+
+        self.clean_role_mapping()
+
+    def clean_role_mapping(self):
+        """Validate the role_mapping field.
+
+        The field must be a dictionary whose values are valid Open edX
+        course-context role identifiers. This prevents mapping LTI roles to
+        arbitrary or system-wide roles.
+
+        Raises:
+            ValidationError: If role_mapping is not a dictionary or maps to an
+                invalid course role.
+
+        """
+        if not isinstance(self.role_mapping, dict):
+            raise ValidationError({
+                'role_mapping': _('Should be a JSON object mapping LTI role URIs to course roles.'),
+            })
+
+        invalid_roles = sorted(
+            set(self.role_mapping.values()) - set(VALID_COURSE_ROLES),
+        )
+        if invalid_roles:
+            raise ValidationError({
+                'role_mapping': _(f'Invalid course roles: {invalid_roles}. Valid roles: {VALID_COURSE_ROLES}.'),
+            })
+
+    def get_role_mapping(self) -> dict:
+        """Get the effective LTI role to course role mapping.
+
+        Returns:
+            The configured role_mapping, or the plugin DEFAULT_ROLE_MAPPING when
+            no per-tool mapping is set.
+
+        """
+        return self.role_mapping or DEFAULT_ROLE_MAPPING
 
     def is_course_id_allowed(self, course_id: str) -> bool:
         """Check if a course ID is allowed.
@@ -491,7 +635,7 @@ class CourseContextQuerySet(models.QuerySet):
                     course_context.pk
                     for course_context in self
                     if course_context.org in site_orgs
-                ]
+                ],
             )
 
         return self

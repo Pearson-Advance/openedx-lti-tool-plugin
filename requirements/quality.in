@@ -1,0 +1,12 @@
+# Requirements for static code analysis.
+# See: https://open-edx-proposals.readthedocs.io/en/latest/oep-0018-bp-python-dependencies.html
+
+-c constraints.txt
+
+pydocstyle
+pylint
+pylint-django
+tox
+edx-drf-extensions
+ddt
+testfixtures

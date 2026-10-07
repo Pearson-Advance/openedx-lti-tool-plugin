@@ -226,8 +226,8 @@ class TestDeepLinkingFormViewPost(TestCase):
                 MagicMock(
                     url='http://example.com',
                     title='Test',
-                )
-            ]
+                ),
+            ],
         }
 
         self.assertEqual(

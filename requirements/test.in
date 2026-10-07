@@ -4,14 +4,15 @@
 
 -r base.txt               # Core dependencies for this package
 
-pylint                    # PEP 8 compliance validation
-pylint-django             # Pylint plugin for Django
+coverage                  # Code coverage measurement
 pycodestyle               # PEP 8 compliance validation
 pydocstyle                # PEP 257 compliance validation
 isort                     # to standardize order of imports
-
+edx-drf-extensions        # edX extensions for Django REST Framework
 tox                       # Virtualenv management for tests
 pytest-django             # pytest extension for better Django support
+pytz                      # Timezone support
 jsonschema                # JSON Schema data validation
 ddt                       # Run tests with multiple different data
 testfixtures              # Helpers and mock objects
+pylint                    # Code quality and style checker

@@ -109,7 +109,7 @@ class TestPublishCourseScore(TestCase):
             (
                 MODULE_PATH,
                 'INFO',
-                f'Plugin is disabled: {self.log_extra}'
+                f'Plugin is disabled: {self.log_extra}',
             ),
         )
 

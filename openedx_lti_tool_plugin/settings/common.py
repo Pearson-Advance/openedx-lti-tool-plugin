@@ -46,6 +46,9 @@ def plugin_settings(settings: LazySettings):
     # Resource link launch settings
     settings.OLTITP_LOGIN_PROMPT_TEMPLATE = 'openedx_lti_tool_plugin/resource_link/login_prompt.html'
 
+    # Username generation settings
+    settings.OLTITP_USERNAME_BASE_SOURCE = 'name'  # 'name' | 'email'
+
     # Deep linking settings
     settings.OLTITP_DEEP_LINKING_FORM_TEMPLATE = 'openedx_lti_tool_plugin/deep_linking/form.html'
 
@@ -55,6 +58,7 @@ def plugin_settings(settings: LazySettings):
     settings.OLTITP_SAFE_SESSIONS_BACKEND = f'{BACKENDS_MODULE_PATH}.safe_sessions_module_o_v1'
     settings.OLTITP_SITE_CONFIGURATION_BACKEND = f'{BACKENDS_MODULE_PATH}.site_configuration_module_o_v1'
     settings.OLTITP_STUDENT_BACKEND = f'{BACKENDS_MODULE_PATH}.student_module_o_v1'
+    settings.OLTITP_ROLES_BACKEND = f'{BACKENDS_MODULE_PATH}.roles_module_o_v1'
     settings.OLTITP_GRADES_BACKEND = f'{BACKENDS_MODULE_PATH}.grades_module_o_v1'
     settings.OLTITP_USER_AUTHN_BACKEND = f'{BACKENDS_MODULE_PATH}.user_authn_module_o_v1'
     settings.OLTITP_LEARNING_SEQUENCES_BACKEND = f'{BACKENDS_MODULE_PATH}.learning_sequences_o_v1'

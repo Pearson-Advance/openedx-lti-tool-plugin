@@ -16,6 +16,56 @@ Unreleased
 
 *
 
+1.0.0 - 2026-07-09
+********************
+
+Added
+=====
+
+- Add per-tool LTI role assignment: the LTI 1.3 roles claim can be mapped to an
+  Open edX course-context role (Course Staff / Course Instructor) via the
+  ``enable_role_assignment`` and ``role_mapping`` fields on the LTI tool
+  configuration. Disabled by default, scoped to course-context roles, and
+  falling back to Student for missing, unrecognized or Learner roles. The
+  managed course role is reconciled on every launch, so a platform-side role
+  change (e.g. a downgrade to Learner) revokes the previously granted role
+  instead of leaving it in place.
+- Add ``OLTITP_USERNAME_GENERATION_STRATEGY`` setting to generate the Open edX
+  username from the LTI email claim prefix (``email_prefix`` strategy), with
+  sanitization to Open edX username constraints and an incremental numeric
+  suffix on collision. Defaults to the legacy ``uuid`` strategy.
+- Add ``OLTITP_USERNAME_BASE_SOURCE`` setting to build a readable Open edX
+  username from the LTI ``name`` claim (default) or the ``email`` claim prefix,
+  with fallback to the other source when the chosen one is empty. The base is
+  sanitized to Open edX username constraints and truncated to 20 characters; a
+  short UUID suffix is appended only on collision.
+
+Changed
+=======
+
+- The LTI username generation now uses the full normalized name base (up to 20
+  characters) and only appends a short UUID on collision, instead of always
+  appending it to a name truncated to 8 characters. Existing users keep their
+  stored usernames; only newly created users are affected.
+
+0.4.1 - 2026-06-18
+********************
+
+Changed
+=======
+
+- Fixed rendering of usage keys.
+
+0.4.0 - 2026-04-23
+********************
+
+Changed
+=======
+
+- Fix CourseEnrollment.enroll call.
+- Fix project entry point in pyproject.toml.
+- Update plugin to work with edx-platform ulmo version.
+
 0.3.1 - 2025-05-20
 ********************
 
@@ -288,7 +338,10 @@ Added
 - Required common and test settings.
 - Supress pytest Django 4.0/4.1 deprecation warnings.
 
-[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v0.3.1...HEAD
+[unreleased]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v1.0.0
+[0.4.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.1
+[0.4.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.3.0
 [0.2.2]: https://github.com/Pearson-Advance/openedx-lti-tool-plugin/releases/tag/v0.2.2

@@ -92,7 +92,7 @@ class LtiToolLoginView(LTIToolView):
             oidc_login.enable_check_cookies()
 
             return oidc_login.redirect(
-                request.POST.get(self.LAUNCH_URI) or request.GET.get(self.LAUNCH_URI)
+                request.POST.get(self.LAUNCH_URI) or request.GET.get(self.LAUNCH_URI),
             )
         except (LtiException, OIDCException) as exc:
             return LoggedHttpResponseBadRequest(_(f'LTI 1.3: OIDC login failed: {exc}'))

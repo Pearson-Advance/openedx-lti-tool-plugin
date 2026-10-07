@@ -35,7 +35,7 @@ class TestCourseContentItemSerializer(TestCase):
             self.request.build_absolute_uri.return_value,
         )
         reverse_mock.assert_called_once_with(
-            f'{app_config.name}:1.3:resource-link:launch'
+            f'{app_config.name}:1.3:resource-link:launch',
         )
         self.request.build_absolute_uri.assert_called_once_with(reverse_mock())
 
